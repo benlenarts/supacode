@@ -562,8 +562,12 @@ final class TerminalSessionState {
       runtime: runtime,
       workingDirectory: inherited.workingDirectory ?? session.workingDirectory,
       initialInput: initialInput,
+      command: inherited.command,
+      environmentVariables: inherited.environmentVariables,
+      waitAfterCommand: inherited.waitAfterCommand,
       fontSize: inherited.fontSize,
-      context: context
+      context: context,
+      deferSurfaceCreation: true
     )
     view.bridge.onTitleChange = { [weak self, weak view] title in
       guard let self, let view else { return }
@@ -579,14 +583,17 @@ final class TerminalSessionState {
       guard let self, let view else { return false }
       return self.createTab(inheritingFromSurfaceId: view.id) != nil
     }
-    view.bridge.onCloseTab = { [weak self] _ in
+    view.bridge.onCloseTab = { [weak self] mode in
       guard let self else { return false }
-      self.closeTab(tabId)
-      return true
+      return self.handleCloseTabRequest(mode, tabId: tabId)
     }
     view.bridge.onGotoTab = { [weak self] target in
       guard let self else { return false }
       return self.handleGotoTabRequest(target)
+    }
+    view.bridge.onMoveTab = { [weak self] move in
+      guard let self else { return false }
+      return self.handleMoveTabRequest(move, tabId: tabId)
     }
     view.bridge.onCommandPaletteToggle = { [weak self] in
       guard let self else { return false }
@@ -614,12 +621,16 @@ final class TerminalSessionState {
       self.emitTaskStatusIfChanged()
     }
     surfaces[view.id] = view
+    view.initializeSurface()
     return view
   }
 
   private struct InheritedSurfaceConfig: Equatable {
     let workingDirectory: URL?
     let fontSize: Float32?
+    let command: String?
+    let environmentVariables: [String: String]
+    let waitAfterCommand: Bool
   }
 
   private func inheritedSurfaceConfig(
@@ -630,7 +641,13 @@ final class TerminalSessionState {
       let view = surfaces[surfaceId],
       let sourceSurface = view.surface
     else {
-      return InheritedSurfaceConfig(workingDirectory: nil, fontSize: nil)
+      return InheritedSurfaceConfig(
+        workingDirectory: nil,
+        fontSize: nil,
+        command: nil,
+        environmentVariables: [:],
+        waitAfterCommand: false
+      )
     }
 
     let inherited = ghostty_surface_inherited_config(sourceSurface, context)
@@ -642,7 +659,24 @@ final class TerminalSessionState {
       }
       return URL(fileURLWithPath: path, isDirectory: true)
     }
-    return InheritedSurfaceConfig(workingDirectory: workingDirectory, fontSize: fontSize)
+    let command = inherited.command.flatMap { ptr -> String? in
+      let value = String(cString: ptr)
+      return value.isEmpty ? nil : value
+    }
+    var environmentVariables: [String: String] = [:]
+    if inherited.env_var_count > 0, let envVars = inherited.env_vars {
+      for index in 0..<inherited.env_var_count {
+        let envVar = envVars[index]
+        environmentVariables[String(cString: envVar.key)] = String(cString: envVar.value)
+      }
+    }
+    return InheritedSurfaceConfig(
+      workingDirectory: workingDirectory,
+      fontSize: fontSize,
+      command: command,
+      environmentVariables: environmentVariables,
+      waitAfterCommand: inherited.wait_after_command
+    )
   }
 
   private func currentFocusedSurfaceId() -> UUID? {
@@ -816,8 +850,15 @@ final class TerminalSessionState {
     }
   }
 
-  private func handleCloseRequest(for view: GhosttySurfaceView, processAlive _: Bool) {
+  private func handleCloseRequest(for view: GhosttySurfaceView, processAlive: Bool) {
+    closeSurface(view, withConfirmation: processAlive)
+  }
+
+  private func closeSurface(_ view: GhosttySurfaceView, withConfirmation: Bool) {
     guard surfaces[view.id] != nil else { return }
+    if withConfirmation && view.needsConfirmQuit && !GhosttyActionSupport.confirmSurfaceClose() {
+      return
+    }
     guard let tabId = tabId(containing: view.id), let tree = trees[tabId] else {
       view.closeSurface()
       surfaces.removeValue(forKey: view.id)
@@ -828,27 +869,79 @@ final class TerminalSessionState {
       surfaces.removeValue(forKey: view.id)
       return
     }
-    let newTree = tree.removing(node)
-    view.closeSurface()
-    surfaces.removeValue(forKey: view.id)
-    if newTree.isEmpty {
-      trees.removeValue(forKey: tabId)
-      focusedSurfaceIdByTab.removeValue(forKey: tabId)
-      tabManager.closeTab(tabId)
-      if tabId == runScriptTabId {
-        setRunScriptTabId(nil)
+    let nextFocusedSurface: GhosttySurfaceView? =
+      if focusedSurfaceIdByTab[tabId] == view.id {
+        nextFocusTargetAfterClosing(node: node, in: tree)
+      } else {
+        nil
       }
+    let newTree = tree.removing(node)
+    if newTree.isEmpty {
+      closeTab(tabId)
       return
     }
     trees[tabId] = newTree
+    view.closeSurface()
+    surfaces.removeValue(forKey: view.id)
     updateRunningState(for: tabId)
     if focusedSurfaceIdByTab[tabId] == view.id {
-      if let nextSurface = newTree.root?.leftmostLeaf() {
+      if let nextSurface = nextFocusedSurface ?? newTree.root?.leftmostLeaf() {
         focusSurface(nextSurface, in: tabId)
       } else {
         focusedSurfaceIdByTab.removeValue(forKey: tabId)
       }
     }
+  }
+
+  private func nextFocusTargetAfterClosing(
+    node: SplitTree<GhosttySurfaceView>.Node,
+    in tree: SplitTree<GhosttySurfaceView>
+  ) -> GhosttySurfaceView? {
+    guard let root = tree.root else { return nil }
+    if root.leftmostLeaf() === node.leftmostLeaf() {
+      return tree.focusTarget(for: .next, from: node)
+    }
+    return tree.focusTarget(for: .previous, from: node)
+  }
+
+  private func handleCloseTabRequest(
+    _ mode: ghostty_action_close_tab_mode_e,
+    tabId: TerminalTabID
+  ) -> Bool {
+    switch mode {
+    case GHOSTTY_ACTION_CLOSE_TAB_MODE_THIS:
+      closeTab(tabId)
+      return true
+    case GHOSTTY_ACTION_CLOSE_TAB_MODE_OTHER:
+      closeOtherTabs(keeping: tabId)
+      return true
+    case GHOSTTY_ACTION_CLOSE_TAB_MODE_RIGHT:
+      closeTabsToRight(of: tabId)
+      return true
+    default:
+      return false
+    }
+  }
+
+  private func handleMoveTabRequest(
+    _ move: ghostty_action_move_tab_s,
+    tabId: TerminalTabID
+  ) -> Bool {
+    guard move.amount != 0 else { return true }
+    let orderedIds = tabManager.tabs.map(\.id)
+    guard let currentIndex = orderedIds.firstIndex(of: tabId) else { return false }
+    let destinationIndex: Int
+    if move.amount < 0 {
+      destinationIndex = max(0, currentIndex - Int(-move.amount))
+    } else {
+      destinationIndex = min(orderedIds.count - 1, currentIndex + Int(move.amount))
+    }
+    guard destinationIndex != currentIndex else { return true }
+    var reorderedIds = orderedIds
+    let tabId = reorderedIds.remove(at: currentIndex)
+    reorderedIds.insert(tabId, at: destinationIndex)
+    tabManager.reorderTabs(reorderedIds)
+    return true
   }
 
   private func handleGotoTabRequest(_ target: ghostty_action_goto_tab_e) -> Bool {

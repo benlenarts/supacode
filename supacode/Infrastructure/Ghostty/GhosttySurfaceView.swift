@@ -52,10 +52,14 @@ final class GhosttySurfaceView: NSView, Identifiable {
   private var surfaceRef: GhosttyRuntime.SurfaceReference?
   private let workingDirectoryCString: UnsafeMutablePointer<CChar>?
   private let initialInputCString: UnsafeMutablePointer<CChar>?
+  private let commandCString: UnsafeMutablePointer<CChar>?
+  private let environmentVariableCStrings: [(key: UnsafeMutablePointer<CChar>, value: UnsafeMutablePointer<CChar>)]
   private let fontSize: Float32
+  private let waitAfterCommand: Bool
   private let context: ghostty_surface_context_e
   private var trackingArea: NSTrackingArea?
   private var lastBackingSize: CGSize = .zero
+  private var measuredSize: CGSize?
   private var lastPerformKeyEvent: TimeInterval?
   private var currentCursor: NSCursor = .iBeam
   private var focused = false
@@ -68,6 +72,7 @@ final class GhosttySurfaceView: NSView, Identifiable {
   private var eventMonitor: Any?
   private var notificationObservers: [NSObjectProtocol] = []
   private var prevPressureStage: Int = 0
+  private var suppressNextLeftMouseUp = false
   private lazy var cachedScreenContents = CachedValue<String>(duration: .milliseconds(500)) {
     [weak self] in
     self?.readScreenContents() ?? ""
@@ -95,6 +100,7 @@ final class GhosttySurfaceView: NSView, Identifiable {
     }
   }
   var onFocusChange: ((Bool) -> Void)?
+  var needsConfirmQuitOverride: Bool?
 
   private var accessibilityPaneIndexHelp: String?
 
@@ -154,12 +160,17 @@ final class GhosttySurfaceView: NSView, Identifiable {
     runtime: GhosttyRuntime,
     workingDirectory: URL?,
     initialInput: String? = nil,
+    command: String? = nil,
+    environmentVariables: [String: String] = [:],
+    waitAfterCommand: Bool = false,
     fontSize: Float32? = nil,
-    context: ghostty_surface_context_e
+    context: ghostty_surface_context_e,
+    deferSurfaceCreation: Bool = false
   ) {
     self.runtime = runtime
     self.bridge = GhosttySurfaceBridge()
     self.fontSize = fontSize ?? 0
+    self.waitAfterCommand = waitAfterCommand
     self.context = context
     if let workingDirectory {
       let path = Self.normalizedWorkingDirectoryPath(
@@ -174,12 +185,22 @@ final class GhosttySurfaceView: NSView, Identifiable {
     } else {
       initialInputCString = nil
     }
+    if let command {
+      commandCString = command.withCString { strdup($0) }
+    } else {
+      commandCString = nil
+    }
+    environmentVariableCStrings = environmentVariables.map { key, value in
+      (
+        key: key.withCString { strdup($0) },
+        value: value.withCString { strdup($0) }
+      )
+    }
     super.init(frame: NSRect(x: 0, y: 0, width: 800, height: 600))
     wantsLayer = true
     bridge.surfaceView = self
-    createSurface()
-    if let surface {
-      surfaceRef = runtime.registerSurface(surface)
+    if !deferSurfaceCreation {
+      initializeSurface()
     }
     registerForDraggedTypes(Array(Self.dropTypes))
 
@@ -209,6 +230,13 @@ final class GhosttySurfaceView: NSView, Identifiable {
     if let initialInputCString {
       free(initialInputCString)
     }
+    if let commandCString {
+      free(commandCString)
+    }
+    for environmentVariable in environmentVariableCStrings {
+      free(environmentVariable.key)
+      free(environmentVariable.value)
+    }
   }
 
   func closeSurface() {
@@ -223,6 +251,14 @@ final class GhosttySurfaceView: NSView, Identifiable {
       bridge.surface = nil
       lastOcclusion = nil
       lastSurfaceFocus = nil
+    }
+  }
+
+  func initializeSurface() {
+    guard surface == nil else { return }
+    createSurface()
+    if let surface {
+      surfaceRef = runtime.registerSurface(surface)
     }
   }
 
@@ -377,14 +413,19 @@ final class GhosttySurfaceView: NSView, Identifiable {
     guard surface != nil else { return }
     guard self.focused != focused else { return }
     self.focused = focused
-    if focused {
-      bridge.state.bellCount = 0
-    }
     setSurfaceFocus(focused)
     onFocusChange?(focused)
     if passwordInput {
       SecureInput.shared.setScoped(ObjectIdentifier(self), focused: focused)
     }
+  }
+
+  var needsConfirmQuit: Bool {
+    if let needsConfirmQuitOverride {
+      return needsConfirmQuitOverride
+    }
+    guard let surface else { return false }
+    return ghostty_surface_needs_confirm_quit(surface)
   }
 
   func setAccessibilityPaneIndex(index: Int, total: Int) {
@@ -524,7 +565,6 @@ final class GhosttySurfaceView: NSView, Identifiable {
       interpretKeyEvents([event])
       return
     }
-    bridge.state.bellCount = 0
     let (translationEvent, translationMods) = translationState(event, surface: surface)
     let action = event.isARepeat ? GHOSTTY_ACTION_REPEAT : GHOSTTY_ACTION_PRESS
     keyTextAccumulator = []
@@ -624,6 +664,10 @@ final class GhosttySurfaceView: NSView, Identifiable {
   }
 
   override func mouseUp(with event: NSEvent) {
+    if suppressNextLeftMouseUp {
+      suppressNextLeftMouseUp = false
+      return
+    }
     prevPressureStage = 0
     sendMouseButton(event, state: GHOSTTY_MOUSE_RELEASE, button: GHOSTTY_MOUSE_LEFT)
     if let surface {
@@ -754,15 +798,29 @@ final class GhosttySurfaceView: NSView, Identifiable {
     guard let window, event.window != nil, window == event.window else { return event }
     let location = convert(event.locationInWindow, from: nil)
     guard hitTest(location) == self else { return event }
-    guard !NSApp.isActive || !window.isKeyWindow else { return event }
-    guard !focused else { return event }
+    guard window.firstResponder !== self else { return event }
+    if NSApp.isActive && window.isKeyWindow {
+      window.makeFirstResponder(self)
+      suppressNextLeftMouseUp = true
+      return nil
+    }
     window.makeFirstResponder(self)
     return event
   }
 
+  func setMeasuredSize(_ size: CGSize) {
+    guard measuredSize != size else { return }
+    measuredSize = size
+    updateSurfaceSize()
+  }
+
+  func surfaceSizeInPoints() -> CGSize {
+    measuredSize ?? bounds.size
+  }
+
   func updateSurfaceSize() {
     guard let surface else { return }
-    let backingSize = convertToBacking(bounds.size)
+    let backingSize = convertToBacking(surfaceSizeInPoints())
     if backingSize == lastBackingSize {
       return
     }
@@ -839,13 +897,43 @@ final class GhosttySurfaceView: NSView, Identifiable {
     config.scale_factor = backingScaleFactor()
     config.font_size = fontSize
     config.working_directory = workingDirectoryCString.map { UnsafePointer($0) }
+    config.command = commandCString.map { UnsafePointer($0) }
     config.initial_input = initialInputCString.map { UnsafePointer($0) }
+    config.wait_after_command = waitAfterCommand
     config.context = context
-    surface = ghostty_surface_new(app, &config)
+    if environmentVariableCStrings.isEmpty {
+      surface = ghostty_surface_new(app, &config)
+    } else {
+      var environmentVariables = environmentVariableCStrings.map { envVar in
+        ghostty_env_var_s(
+          key: UnsafePointer(envVar.key),
+          value: UnsafePointer(envVar.value)
+        )
+      }
+      let environmentVariableCount = environmentVariables.count
+      environmentVariables.withUnsafeMutableBufferPointer { buffer in
+        config.env_vars = buffer.baseAddress
+        config.env_var_count = environmentVariableCount
+        surface = ghostty_surface_new(app, &config)
+      }
+    }
     bridge.surface = surface
     lastOcclusion = nil
     lastSurfaceFocus = nil
     updateSurfaceSize()
+  }
+
+  func resetWindowSize() -> Bool {
+    guard let window,
+      let width = bridge.state.initialSizeWidth,
+      let height = bridge.state.initialSizeHeight,
+      width > 0,
+      height > 0
+    else {
+      return false
+    }
+    window.setContentSize(NSSize(width: Int(width), height: Int(height)))
+    return true
   }
 
   private func updateContentScale() {
@@ -1673,6 +1761,10 @@ final class GhosttySurfaceScrollView: NSView {
   func updateSurfaceSize() {
     surfaceView.updateSurfaceSize()
     needsLayout = true
+  }
+
+  func setMeasuredSize(_ size: CGSize) {
+    surfaceView.setMeasuredSize(size)
   }
 
   func updateScrollbar(total: UInt64, offset: UInt64, length: UInt64) {
