@@ -53,13 +53,19 @@ let project = Project(
           ],
         ],
       ]),
-      sources: [
-        "supacode/**",
-      ],
       resources: [
-        "supacode/**/*.xcassets",
+        "supacode/Assets.xcassets",
         .folderReference(path: "Resources/ghostty"),
         .folderReference(path: "Resources/terminfo"),
+      ],
+      buildableFolders: [
+        "supacode/App",
+        "supacode/Clients",
+        "supacode/Commands",
+        "supacode/Domain",
+        "supacode/Features",
+        "supacode/Infrastructure",
+        "supacode/Support",
       ],
       dependencies: [
         .external(name: "ComposableArchitecture"),
@@ -96,8 +102,8 @@ let project = Project(
       bundleId: "app.supabit.supacodeTests",
       deploymentTargets: .macOS("26.1"),
       infoPlist: .default,
-      sources: [
-        "supacodeTests/**",
+      buildableFolders: [
+        "supacodeTests",
       ],
       dependencies: [
         .target(name: "supacode"),

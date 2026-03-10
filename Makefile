@@ -16,11 +16,19 @@ GHOSTTY_XCFRAMEWORK_PATH := $(CURRENT_MAKEFILE_DIR)/Frameworks/GhosttyKit.xcfram
 GHOSTTY_RESOURCE_PATH := $(CURRENT_MAKEFILE_DIR)/Resources/ghostty
 GHOSTTY_TERMINFO_PATH := $(CURRENT_MAKEFILE_DIR)/Resources/terminfo
 GHOSTTY_BUILD_OUTPUTS := $(GHOSTTY_XCFRAMEWORK_PATH) $(GHOSTTY_RESOURCE_PATH) $(GHOSTTY_TERMINFO_PATH)
+TUIST_GENERATION_STAMP := $(PROJECT_WORKSPACE)/.tuist-generated-stamp
+TUIST_GENERATION_INPUTS := Project.swift Tuist.swift Tuist/Package.swift Tuist/Package.resolved Configurations/Project.xcconfig mise.toml
 VERSION ?=
 BUILD ?=
 XCODEBUILD_FLAGS ?=
 .DEFAULT_GOAL := help
 .PHONY: build-ghostty-xcframework generate-project build-app run-app install-dev-build archive export-archive format lint check test bump-version bump-and-release log-stream
+
+ifeq ($(CI),)
+TUIST_INSTALL_FLAGS :=
+else
+TUIST_INSTALL_FLAGS := --force-resolved-versions
+endif
 
 help:  # Display this help.
 	@-+echo "Run make with one of the following targets:"
@@ -41,11 +49,14 @@ $(GHOSTTY_BUILD_OUTPUTS):
 	mkdir -p "$$terminfo_dst"; \
 	rsync -a --delete "$$terminfo_src/" "$$terminfo_dst/"
 
-generate-project: build-ghostty-xcframework # Resolve packages and generate Xcode workspace
-	mise exec -- tuist install
-	mise exec -- tuist generate --no-open
+generate-project: $(TUIST_GENERATION_STAMP) # Resolve packages and generate Xcode workspace
 
-build-app: generate-project # Build the macOS app (Debug)
+$(TUIST_GENERATION_STAMP): $(TUIST_GENERATION_INPUTS) $(GHOSTTY_BUILD_OUTPUTS)
+	mise exec -- tuist install $(TUIST_INSTALL_FLAGS)
+	mise exec -- tuist generate --no-open
+	touch "$@"
+
+build-app: $(TUIST_GENERATION_STAMP) # Build the macOS app (Debug)
 	bash -o pipefail -c 'xcodebuild -workspace "$(PROJECT_WORKSPACE)" -scheme "$(APP_SCHEME)" -configuration Debug build -skipMacroValidation 2>&1 | mise exec -- xcsift -qw --format toon'
 
 run-app: build-app # Build then launch (Debug) with log streaming
@@ -70,13 +81,13 @@ install-dev-build: build-app # install dev build to /Applications
 	ditto "$$src" "$$dst"; \
 	echo "installed $$dst"
 
-archive: generate-project # Archive Release build for distribution
+archive: $(TUIST_GENERATION_STAMP) # Archive Release build for distribution
 	bash -o pipefail -c 'xcodebuild -workspace "$(PROJECT_WORKSPACE)" -scheme "$(APP_SCHEME)" -configuration Release -archivePath build/supacode.xcarchive archive CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM="$$APPLE_TEAM_ID" CODE_SIGN_IDENTITY="$$DEVELOPER_ID_IDENTITY_SHA" OTHER_CODE_SIGN_FLAGS="--timestamp" -skipMacroValidation $(XCODEBUILD_FLAGS) 2>&1 | mise exec -- xcsift -qw --format toon'
 
 export-archive: # Export xarchive
 	bash -o pipefail -c 'xcodebuild -exportArchive -archivePath build/supacode.xcarchive -exportPath build/export -exportOptionsPlist build/ExportOptions.plist 2>&1 | mise exec -- xcsift -qw --format toon'
 
-test: generate-project
+test: $(TUIST_GENERATION_STAMP)
 	xcodebuild test -workspace "$(PROJECT_WORKSPACE)" -scheme "$(APP_SCHEME)" -destination "platform=macOS" CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" -skipMacroValidation 2>&1
 
 format: # Format code with swift-format (local only)

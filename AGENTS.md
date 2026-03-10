@@ -4,6 +4,10 @@
 make # run make for a list of possible commands
 ```
 
+`mise.toml` pins the Tuist version for this repo. `supacode.xcworkspace` and `supacode.xcodeproj` are generated outputs and should remain untracked.
+
+`make generate-project`, `make build-app`, and `make test` reuse the existing generated workspace when `Project.swift`, `Tuist.swift`, `Tuist/Package.swift`, `Tuist/Package.resolved`, `Configurations/Project.xcconfig`, `mise.toml`, and the Ghostty build outputs are unchanged.
+
 Run a single test class or method:
 ```bash
 xcodebuild test -workspace supacode.xcworkspace -scheme supacode -destination "platform=macOS" \
