@@ -2,6 +2,7 @@ import AppKit
 import ComposableArchitecture
 import Foundation
 import GhosttyKit
+import Sentry
 import Sparkle
 import SwiftUI
 
@@ -82,6 +83,12 @@ struct SupacodeApp: App {
     }
 
     NSWindow.allowsAutomaticWindowTabbing = false
+    #if !DEBUG
+      SentrySDK.start { options in
+        options.dsn = "__SENTRY_DSN__"
+        options.enableAppHangTracking = false
+      }
+    #endif
     if let resourceURL = Bundle.main.resourceURL?.appendingPathComponent("ghostty") {
       setenv("GHOSTTY_RESOURCES_DIR", resourceURL.path, 1)
     }
