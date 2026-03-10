@@ -58,7 +58,7 @@ final class GhosttyRuntime {
       preconditionFailure("ghostty_app_new failed")
     }
     self.app = app
-    setAppFocus(NSApp.isActive)
+    setAppFocus((NSApp?.isActive) == true)
 
     let center = NotificationCenter.default
     observers.append(
