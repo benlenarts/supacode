@@ -1,6 +1,6 @@
 [tools]
 zig = "0.15.2"
-tuist = "latest"
+tuist = "4.155.4"
 swiftlint = "latest"
 "github:ldomaradzki/xcsift" = "latest"
 "npm:create-dmg" = "latest"
