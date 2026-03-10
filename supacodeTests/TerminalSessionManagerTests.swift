@@ -6,7 +6,7 @@ import Testing
 @MainActor
 struct TerminalSessionManagerTests {
   @Test func buffersEventsUntilStreamCreated() async {
-    let manager = TerminalSessionManager(runtime: GhosttyRuntime())
+    let manager = TerminalSessionManager(runtime: GhosttyRuntime(skipNativeRuntime: true))
     let session = makeTerminalSession()
     let state = manager.state(for: session)
 
@@ -24,7 +24,7 @@ struct TerminalSessionManagerTests {
   }
 
   @Test func emitsEventsAfterStreamCreated() async {
-    let manager = TerminalSessionManager(runtime: GhosttyRuntime())
+    let manager = TerminalSessionManager(runtime: GhosttyRuntime(skipNativeRuntime: true))
     let session = makeTerminalSession()
     let state = manager.state(for: session)
 
@@ -45,7 +45,7 @@ struct TerminalSessionManagerTests {
   }
 
   @Test func notificationIndicatorUsesCurrentCountOnStreamStart() async {
-    let manager = TerminalSessionManager(runtime: GhosttyRuntime())
+    let manager = TerminalSessionManager(runtime: GhosttyRuntime(skipNativeRuntime: true))
     let session = makeTerminalSession()
     let state = manager.state(for: session)
 
@@ -79,7 +79,7 @@ struct TerminalSessionManagerTests {
   }
 
   @Test func taskStatusReflectsAnyRunningTab() {
-    let manager = TerminalSessionManager(runtime: GhosttyRuntime())
+    let manager = TerminalSessionManager(runtime: GhosttyRuntime(skipNativeRuntime: true))
     let session = makeTerminalSession()
     let state = manager.state(for: session)
 
@@ -105,7 +105,7 @@ struct TerminalSessionManagerTests {
   }
 
   @Test func hasUnseenNotificationsReflectsUnreadEntries() {
-    let manager = TerminalSessionManager(runtime: GhosttyRuntime())
+    let manager = TerminalSessionManager(runtime: GhosttyRuntime(skipNativeRuntime: true))
     let session = makeTerminalSession()
     let state = manager.state(for: session)
 
@@ -122,7 +122,7 @@ struct TerminalSessionManagerTests {
   }
 
   @Test func markAllNotificationsReadEmitsUpdatedIndicatorCount() async {
-    let manager = TerminalSessionManager(runtime: GhosttyRuntime())
+    let manager = TerminalSessionManager(runtime: GhosttyRuntime(skipNativeRuntime: true))
     let session = makeTerminalSession()
     let state = manager.state(for: session)
 
@@ -144,7 +144,7 @@ struct TerminalSessionManagerTests {
   }
 
   @Test func markNotificationsReadOnlyAffectsMatchingSurface() {
-    let manager = TerminalSessionManager(runtime: GhosttyRuntime())
+    let manager = TerminalSessionManager(runtime: GhosttyRuntime(skipNativeRuntime: true))
     let session = makeTerminalSession()
     let state = manager.state(for: session)
     let surfaceA = UUID()
@@ -171,7 +171,7 @@ struct TerminalSessionManagerTests {
   }
 
   @Test func setNotificationsDisabledMarksAllRead() {
-    let manager = TerminalSessionManager(runtime: GhosttyRuntime())
+    let manager = TerminalSessionManager(runtime: GhosttyRuntime(skipNativeRuntime: true))
     let session = makeTerminalSession()
     let state = manager.state(for: session)
 
@@ -187,7 +187,7 @@ struct TerminalSessionManagerTests {
   }
 
   @Test func dismissAllNotificationsClearsState() {
-    let manager = TerminalSessionManager(runtime: GhosttyRuntime())
+    let manager = TerminalSessionManager(runtime: GhosttyRuntime(skipNativeRuntime: true))
     let session = makeTerminalSession()
     let state = manager.state(for: session)
 

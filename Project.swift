@@ -102,7 +102,15 @@ let project = Project(
       dependencies: [
         .target(name: "supacode"),
         .external(name: "DependenciesTestSupport"),
-      ]
+      ],
+      settings: .settings(
+        base: [
+          "TEST_HOST": "",
+          "BUNDLE_LOADER": "$(BUILT_PRODUCTS_DIR)/supacode.app/Contents/MacOS/supacode.debug.dylib",
+          "LD_RUNPATH_SEARCH_PATHS": "$(inherited) @loader_path/../Frameworks @executable_path/../Frameworks @loader_path/../../../supacode.app/Contents/MacOS",
+        ],
+        defaultSettings: .essential
+      )
     ),
   ],
   additionalFiles: [

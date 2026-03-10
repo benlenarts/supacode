@@ -55,14 +55,29 @@ final class SupacodeAppDelegate: NSObject, NSApplicationDelegate {
 @main
 @MainActor
 struct SupacodeApp: App {
+  private static let isRunningTests = ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
+
   @NSApplicationDelegateAdaptor(SupacodeAppDelegate.self) private var appDelegate
-  @State private var ghostty: GhosttyRuntime
-  @State private var terminalManager: TerminalSessionManager
-  @State private var ghosttyShortcuts: GhosttyShortcutManager
-  @State private var commandKeyObserver: CommandKeyObserver
+  @State private var ghostty: GhosttyRuntime?
+  @State private var terminalManager: TerminalSessionManager?
+  @State private var ghosttyShortcuts: GhosttyShortcutManager?
+  @State private var commandKeyObserver: CommandKeyObserver?
   @State private var store: StoreOf<AppFeature>
 
   @MainActor init() {
+    let appStore = Store(initialState: AppFeature.State()) {
+      AppFeature()
+    }
+    _store = State(initialValue: appStore)
+
+    guard !Self.isRunningTests else {
+      _ghostty = State(initialValue: nil)
+      _terminalManager = State(initialValue: nil)
+      _ghosttyShortcuts = State(initialValue: nil)
+      _commandKeyObserver = State(initialValue: nil)
+      return
+    }
+
     NSWindow.allowsAutomaticWindowTabbing = false
     if let resourceURL = Bundle.main.resourceURL?.appendingPathComponent("ghostty") {
       setenv("GHOSTTY_RESOURCES_DIR", resourceURL.path, 1)
@@ -86,23 +101,30 @@ struct SupacodeApp: App {
 
     let commandKeyObserver = CommandKeyObserver()
     _commandKeyObserver = State(initialValue: commandKeyObserver)
-
-    let appStore = Store(initialState: AppFeature.State()) {
-      AppFeature()
-    }
-    _store = State(initialValue: appStore)
   }
 
   var body: some Scene {
     Window("Supacode", id: "main") {
-      GhosttyColorSchemeSyncView(ghostty: ghostty) {
-        ContentView(store: store, terminalManager: terminalManager)
-          .environment(ghosttyShortcuts)
-          .environment(commandKeyObserver)
+      if
+        let ghostty,
+        let terminalManager,
+        let ghosttyShortcuts,
+        let commandKeyObserver
+      {
+        GhosttyColorSchemeSyncView(ghostty: ghostty) {
+          ContentView(store: store, terminalManager: terminalManager)
+            .environment(ghosttyShortcuts)
+            .environment(commandKeyObserver)
+        }
+      } else {
+        Color.clear
+          .frame(width: 1, height: 1)
       }
     }
     .commands {
-      SidebarCommands()
+      if !Self.isRunningTests {
+        SidebarCommands()
+      }
     }
   }
 }

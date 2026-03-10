@@ -7,8 +7,6 @@ import ProjectDescription
 let packageSettings = PackageSettings(
   productTypes: [
     "CasePaths": .framework,
-    "CasePathsCore": .framework,
-    "Clocks": .framework,
     "CombineSchedulers": .framework,
     "ComposableArchitecture": .framework,
     "ConcurrencyExtras": .framework,
@@ -19,19 +17,20 @@ let packageSettings = PackageSettings(
     "InternalCollectionsUtilities": .framework,
     "IssueReporting": .framework,
     "IssueReportingPackageSupport": .framework,
+    "IssueReportingTestSupport": .framework,
     "OrderedCollections": .framework,
     "Perception": .framework,
     "PerceptionCore": .framework,
     "Sharing": .framework,
-    "Sharing1": .framework,
-    "Sharing2": .framework,
     "SwiftNavigation": .framework,
-    "SwiftUINavigation": .framework,
-    "UIKitNavigation": .framework,
-    "UIKitNavigationShim": .framework,
     "XCTestDynamicOverlay": .framework,
     "Sparkle": .framework,
     "Sentry": .framework,
+  ],
+  targetSettings: [
+    "IssueReportingTestSupport": [
+      "ENABLE_TESTING_SEARCH_PATHS": "YES",
+    ],
   ]
 )
 #endif
