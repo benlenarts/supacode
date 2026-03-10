@@ -68,7 +68,6 @@ private struct V2SidebarFooterView: View {
     .padding(.horizontal, 12)
     .padding(.vertical, 8)
     .frame(maxWidth: .infinity, alignment: .leading)
-    .background(.regularMaterial)
     .overlay(alignment: .top) {
       Divider()
     }
