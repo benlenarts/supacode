@@ -16,6 +16,11 @@
       "sourceType": "github",
       "computedHash": "458f8047ce1b93820c9d27d2267750904cd0384fd5a0e7f5b0f1079dbe9d19a9"
     },
+    "swiftui-expert-skill": {
+      "source": "avdlee/swiftui-agent-skill",
+      "sourceType": "github",
+      "computedHash": "f8f1a9994e0c22bd01e37369f192651819fce9a80ee21b4faff43b6710191943"
+    },
     "using-tuist-generated-projects": {
       "source": "tuist/agent-skills",
       "sourceType": "github",
