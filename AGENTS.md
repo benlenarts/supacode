@@ -1,18 +1,7 @@
 ## Build Commands
 
 ```bash
-make build-ghostty-xcframework  # Rebuild GhosttyKit from Zig source (requires mise)
-make generate-project            # Resolve packages and generate the Xcode workspace via Tuist
-make build-app                   # Build macOS app (Debug) via generated workspace
-make run-app                     # Build and launch Debug app
-make install-dev-build           # Build and copy to /Applications
-make format                      # Run swift-format only
-make lint                        # Run swiftlint only (fix + lint)
-make check                       # Run both format and lint
-make test                        # Run all tests
-make log-stream                  # Stream app logs (subsystem: app.supabit.supacode)
-make bump-version                # Bump patch version and create git tag
-make bump-and-release            # Bump version and push to trigger release
+make # run make for a list of possible commands
 ```
 
 Run a single test class or method:
@@ -37,9 +26,8 @@ AppFeature (root TCA store)
 ├─ SettingsFeature (appearance, updates, repo settings)
 └─ UpdatesFeature (Sparkle auto-updates)
 
-WorktreeTerminalManager (global @Observable terminal state)
-├─ selectedWorktreeID (tracks current selection for bell logic)
-└─ WorktreeTerminalState (per worktree)
+TerminalSessionManager (global @Observable, manages all sessions)
+└─ TerminalSessionState (per session, @Observable)
     └─ TerminalTabManager (tab/split management)
         └─ GhosttySurfaceState[] (one per terminal surface)
 
@@ -50,17 +38,38 @@ GhosttyRuntime (shared singleton)
 
 ### TCA ↔ Terminal Communication
 
-The terminal layer (`WorktreeTerminalManager`) is `@Observable` but outside TCA. Communication uses `TerminalClient`:
+The terminal layer (`TerminalSessionManager`) is `@Observable` but outside TCA. Communication uses `TerminalClient`:
 
 ```
-Reducer → terminalClient.send(Command) → WorktreeTerminalManager
+Reducer → terminalClient.send(Command) → TerminalSessionManager
                                                     ↓
 Reducer ← .terminalEvent(Event) ← AsyncStream<Event>
 ```
 
-- **Commands**: `createTab`, `closeFocusedTab`, `prune`, `setSelectedWorktreeID`, etc.
-- **Events**: `notificationReceived`, `tabCreated`, `tabClosed`, `focusChanged`, `taskStatusChanged`
+- **Commands**: `createTab`, `closeFocusedTab`, `runScript`, `setSelectedSessionID`, etc.
+- **Events**: `tabCreated`, `tabClosed`, `focusChanged`, `taskStatusChanged`, `setupScriptConsumed`
 - Wired in `supacodeApp.swift`, subscribed in `AppFeature.task`
+
+### Client Pattern
+
+All dependency clients follow the same convention — pure Sendable function structs with DependencyKey:
+
+```swift
+struct FooClient: Sendable {
+  var doSomething: @Sendable (Input) -> Output
+}
+
+extension FooClient: DependencyKey {
+  static let liveValue = FooClient(/* real impl */)
+  static let testValue = FooClient(/* no-op stubs */)
+}
+
+extension DependencyValues {
+  var fooClient: FooClient { get { self[FooClient.self] } set { self[FooClient.self] = newValue } }
+}
+```
+
+Clients live in `supacode/Clients/` — one directory per client (Terminal, Analytics, Shell, etc.).
 
 ### Key Dependencies
 
@@ -80,17 +89,26 @@ Reducer ← .terminalEvent(Event) ← AsyncStream<Event>
 ## Code Guidelines
 
 - Target macOS 26.0+, Swift 6.2+
+- Project uses `SWIFT_DEFAULT_ACTOR_ISOLATION=MainActor` — all types are `@MainActor` by default
 - Before doing a big feature or when planning, consult with pfw (pointfree) skills on TCA, Observable best practices first.
 - Use `@ObservableState` for TCA feature state; use `@Observable` for non-TCA shared stores; never `ObservableObject`
 - Always mark `@Observable` classes with `@MainActor`
 - Modern SwiftUI only: `foregroundStyle()`, `NavigationStack`, `Button` over `onTapGesture()`
 - When a new logic changes in the Reducer, always add tests
-- In unit tests, never use `Task.sleep`; use `TestClock` (or an injected clock) and drive time with `advance`.
 - Prefer Swift-native APIs over Foundation where they exist (e.g., `replacing()` not `replacingOccurrences()`)
 - Avoid `GeometryReader` when `containerRelativeFrame()` or `visualEffect()` would work
 - Do not use NSNotification to communicate between reducers.
 - Prefer `@Shared` directly in reducers for app storage and shared settings; do not introduce new dependency clients solely to wrap `@Shared`.
 - Use `SupaLogger` for all logging. Never use `print()` or `os.Logger` directly. `SupaLogger` prints in DEBUG and uses `os.Logger` in release.
+
+### Testing Conventions
+
+- Use **Swift Testing** framework (`import Testing`), not XCTest
+- Test types are `@MainActor struct`, not classes
+- Use `#expect()` for assertions, `#require()` for unwrapping — never `XCTAssert*`
+- Use TCA `TestStore` for reducer tests
+- Never use `Task.sleep`; use `TestClock` (or an injected clock) and drive time with `advance`
+- Helper factories (e.g., `makeTerminalSession()`) go in the same test file
 
 ### Formatting & Linting
 
