@@ -298,7 +298,7 @@ jobs:
             echo "No stable release found, skipping appcast merge"
             exit 0
           fi
-          gh release download "$LATEST_TAG" -p "appcast.xml" -O stable_appcast.xml -R "${{ github.repository }}" 2>/dev/null || exit 0
+          gh release download "$LATEST_TAG" -p "appcast-v2.xml" -O stable_appcast.xml -R "${{ github.repository }}" 2>/dev/null || exit 0
 
           python3 - stable_appcast.xml build/appcast.xml merged_appcast.xml <<'PYEOF'
           import sys
@@ -331,5 +331,5 @@ jobs:
           stable_tree.write(out_path, xml_declaration=True, encoding='utf-8')
           PYEOF
 
-          mv merged_appcast.xml appcast.xml
-          gh release upload "$LATEST_TAG" appcast.xml --clobber -R "${{ github.repository }}"
+          mv merged_appcast.xml appcast-v2.xml
+          gh release upload "$LATEST_TAG" appcast-v2.xml --clobber -R "${{ github.repository }}"

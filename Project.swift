@@ -39,7 +39,7 @@ let project = Project(
         "NSRemindersUsageDescription": "A program running within Supacode would like to access your reminders.",
         "NSSpeechRecognitionUsageDescription": "A program running within Supacode would like to use speech recognition.",
         "NSSystemAdministrationUsageDescription": "A program running within Supacode requires elevated privileges.",
-        "SUFeedURL": "https://supacode.sh/download/latest/appcast.xml",
+        "SUFeedURL": "https://supacode.sh/appcast-v2.xml",
         "SUPublicEDKey": "eBdTbl+6sR8gxO1zyzyvdQHuJrXMLxD31oCc+JoW5jo=",
         "SUEnableAutomaticChecks": true,
         "SUAutomaticallyUpdate": true,

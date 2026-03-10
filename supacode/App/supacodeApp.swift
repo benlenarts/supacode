@@ -2,6 +2,7 @@ import AppKit
 import ComposableArchitecture
 import Foundation
 import GhosttyKit
+import Sparkle
 import SwiftUI
 
 private enum GhosttyCLI {
@@ -62,6 +63,7 @@ struct SupacodeApp: App {
   @State private var terminalManager: TerminalSessionManager?
   @State private var ghosttyShortcuts: GhosttyShortcutManager?
   @State private var commandKeyObserver: CommandKeyObserver?
+  @State private var updaterController: SPUStandardUpdaterController?
   @State private var store: StoreOf<AppFeature>
 
   @MainActor init() {
@@ -75,6 +77,7 @@ struct SupacodeApp: App {
       _terminalManager = State(initialValue: nil)
       _ghosttyShortcuts = State(initialValue: nil)
       _commandKeyObserver = State(initialValue: nil)
+      _updaterController = State(initialValue: nil)
       return
     }
 
@@ -101,6 +104,13 @@ struct SupacodeApp: App {
 
     let commandKeyObserver = CommandKeyObserver()
     _commandKeyObserver = State(initialValue: commandKeyObserver)
+
+    let updaterController = SPUStandardUpdaterController(
+      startingUpdater: true,
+      updaterDelegate: nil,
+      userDriverDelegate: nil
+    )
+    _updaterController = State(initialValue: updaterController)
   }
 
   var body: some Scene {
@@ -124,6 +134,9 @@ struct SupacodeApp: App {
     .commands {
       if !Self.isRunningTests {
         SidebarCommands()
+        if let updaterController {
+          UpdateCommands(updaterController: updaterController)
+        }
         if let ghosttyShortcuts {
           TerminalCommands(ghosttyShortcuts: ghosttyShortcuts)
         }
