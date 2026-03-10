@@ -18,8 +18,9 @@ Native terminal coding agents command center.
 
 ```bash
 make build-ghostty-xcframework   # Build GhosttyKit from Zig source
-make build-app                   # Build macOS app (Debug)
-make run-app                     # Build and launch
+make generate-project            # Resolve packages and generate the workspace with Tuist
+make build-app                   # Generate and build macOS app (Debug)
+make run-app                     # Generate, build, and launch
 ```
 
 ## Development
@@ -34,4 +35,3 @@ make format    # Run swift-format
 
 - I actual prefer a well written issue describing features/bugs u want rather than a vibe-coded PR
 - I review every line personally and will close if I feel like the quality is not up to standard
-

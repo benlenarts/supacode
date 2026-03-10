@@ -2,7 +2,8 @@
 
 ```bash
 make build-ghostty-xcframework  # Rebuild GhosttyKit from Zig source (requires mise)
-make build-app                   # Build macOS app (Debug) via xcodebuild
+make generate-project            # Resolve packages and generate the Xcode workspace via Tuist
+make build-app                   # Build macOS app (Debug) via generated workspace
 make run-app                     # Build and launch Debug app
 make install-dev-build           # Build and copy to /Applications
 make format                      # Run swift-format only
@@ -16,12 +17,12 @@ make bump-and-release            # Bump version and push to trigger release
 
 Run a single test class or method:
 ```bash
-xcodebuild test -project supacode.xcodeproj -scheme supacode -destination "platform=macOS" \
+xcodebuild test -workspace supacode.xcworkspace -scheme supacode -destination "platform=macOS" \
   -only-testing:supacodeTests/TerminalTabManagerTests \
   CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" -skipMacroValidation
 ```
 
-Requires [mise](https://mise.jdx.dev/) for zig, swiftlint, and xcsift tooling.
+Requires [mise](https://mise.jdx.dev/) for zig, tuist, swiftlint, and xcsift tooling.
 
 ## Architecture
 

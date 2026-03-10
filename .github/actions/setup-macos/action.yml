@@ -42,13 +42,13 @@ runs:
         set -euo pipefail
         make build-ghostty-xcframework
 
-    - name: SPM cache
+    - name: Tuist dependency cache
       uses: actions/cache@v4
       with:
-        path: /tmp/supacode-spm-cache/SourcePackages
-        key: ${{ runner.os }}-${{ runner.arch }}-spm-v0-${{ hashFiles('**/Package.resolved') }}
+        path: Tuist/Dependencies
+        key: ${{ runner.os }}-${{ runner.arch }}-tuist-deps-v0-${{ hashFiles('Tuist/Package.swift') }}
         restore-keys: |
-          ${{ runner.os }}-${{ runner.arch }}-spm-v0-
+          ${{ runner.os }}-${{ runner.arch }}-tuist-deps-v0-
 
     - name: Xcode compilation cache
       uses: actions/cache@v4

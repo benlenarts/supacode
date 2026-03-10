@@ -9,16 +9,18 @@ MAKEFLAGS += --no-builtin-rules
 # Derived values (DO NOT TOUCH).
 CURRENT_MAKEFILE_PATH := $(abspath $(lastword $(MAKEFILE_LIST)))
 CURRENT_MAKEFILE_DIR := $(patsubst %/,%,$(dir $(CURRENT_MAKEFILE_PATH)))
+PROJECT_WORKSPACE := $(CURRENT_MAKEFILE_DIR)/supacode.xcworkspace
+APP_SCHEME := supacode
+VERSION_XCCONFIG := $(CURRENT_MAKEFILE_DIR)/Configurations/Project.xcconfig
 GHOSTTY_XCFRAMEWORK_PATH := $(CURRENT_MAKEFILE_DIR)/Frameworks/GhosttyKit.xcframework
 GHOSTTY_RESOURCE_PATH := $(CURRENT_MAKEFILE_DIR)/Resources/ghostty
 GHOSTTY_TERMINFO_PATH := $(CURRENT_MAKEFILE_DIR)/Resources/terminfo
 GHOSTTY_BUILD_OUTPUTS := $(GHOSTTY_XCFRAMEWORK_PATH) $(GHOSTTY_RESOURCE_PATH) $(GHOSTTY_TERMINFO_PATH)
-SPM_CACHE_DIR := /tmp/supacode-spm-cache/SourcePackages
 VERSION ?=
 BUILD ?=
 XCODEBUILD_FLAGS ?=
 .DEFAULT_GOAL := help
-.PHONY: build-ghostty-xcframework build-app run-app install-dev-build archive export-archive format lint check test bump-version bump-and-release log-stream
+.PHONY: build-ghostty-xcframework generate-project build-app run-app install-dev-build archive export-archive format lint check test bump-version bump-and-release log-stream
 
 help:  # Display this help.
 	@-+echo "Run make with one of the following targets:"
@@ -39,18 +41,22 @@ $(GHOSTTY_BUILD_OUTPUTS):
 	mkdir -p "$$terminfo_dst"; \
 	rsync -a --delete "$$terminfo_src/" "$$terminfo_dst/"
 
-build-app: build-ghostty-xcframework # Build the macOS app (Debug)
-	bash -o pipefail -c 'xcodebuild -project supacode.xcodeproj -scheme supacode -configuration Debug build -skipMacroValidation -clonedSourcePackagesDirPath $(SPM_CACHE_DIR) 2>&1 | mise exec -- xcsift -qw --format toon'
+generate-project: build-ghostty-xcframework # Resolve packages and generate Xcode workspace
+	mise exec -- tuist install
+	mise exec -- tuist generate --no-open
+
+build-app: generate-project # Build the macOS app (Debug)
+	bash -o pipefail -c 'xcodebuild -workspace "$(PROJECT_WORKSPACE)" -scheme "$(APP_SCHEME)" -configuration Debug build -skipMacroValidation 2>&1 | mise exec -- xcsift -qw --format toon'
 
 run-app: build-app # Build then launch (Debug) with log streaming
-	@settings="$$(xcodebuild -project supacode.xcodeproj -scheme supacode -configuration Debug -showBuildSettings -json 2>/dev/null)"; \
+	@settings="$$(xcodebuild -workspace "$(PROJECT_WORKSPACE)" -scheme "$(APP_SCHEME)" -configuration Debug -showBuildSettings -json 2>/dev/null)"; \
 	build_dir="$$(echo "$$settings" | jq -r '.[0].buildSettings.BUILT_PRODUCTS_DIR')"; \
 	product="$$(echo "$$settings" | jq -r '.[0].buildSettings.FULL_PRODUCT_NAME')"; \
 	exec_name="$$(echo "$$settings" | jq -r '.[0].buildSettings.EXECUTABLE_NAME')"; \
 	"$$build_dir/$$product/Contents/MacOS/$$exec_name"
 
 install-dev-build: build-app # install dev build to /Applications
-	@settings="$$(xcodebuild -project supacode.xcodeproj -scheme supacode -configuration Debug -showBuildSettings -json 2>/dev/null)"; \
+	@settings="$$(xcodebuild -workspace "$(PROJECT_WORKSPACE)" -scheme "$(APP_SCHEME)" -configuration Debug -showBuildSettings -json 2>/dev/null)"; \
 	build_dir="$$(echo "$$settings" | jq -r '.[0].buildSettings.BUILT_PRODUCTS_DIR')"; \
 	product="$$(echo "$$settings" | jq -r '.[0].buildSettings.FULL_PRODUCT_NAME')"; \
 	src="$$build_dir/$$product"; \
@@ -64,14 +70,14 @@ install-dev-build: build-app # install dev build to /Applications
 	ditto "$$src" "$$dst"; \
 	echo "installed $$dst"
 
-archive: build-ghostty-xcframework # Archive Release build for distribution
-	bash -o pipefail -c 'xcodebuild -project supacode.xcodeproj -scheme supacode -configuration Release -archivePath build/supacode.xcarchive archive CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM="$$APPLE_TEAM_ID" CODE_SIGN_IDENTITY="$$DEVELOPER_ID_IDENTITY_SHA" OTHER_CODE_SIGN_FLAGS="--timestamp" -skipMacroValidation -clonedSourcePackagesDirPath $(SPM_CACHE_DIR) $(XCODEBUILD_FLAGS) 2>&1 | mise exec -- xcsift -qw --format toon'
+archive: generate-project # Archive Release build for distribution
+	bash -o pipefail -c 'xcodebuild -workspace "$(PROJECT_WORKSPACE)" -scheme "$(APP_SCHEME)" -configuration Release -archivePath build/supacode.xcarchive archive CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM="$$APPLE_TEAM_ID" CODE_SIGN_IDENTITY="$$DEVELOPER_ID_IDENTITY_SHA" OTHER_CODE_SIGN_FLAGS="--timestamp" -skipMacroValidation $(XCODEBUILD_FLAGS) 2>&1 | mise exec -- xcsift -qw --format toon'
 
 export-archive: # Export xarchive
 	bash -o pipefail -c 'xcodebuild -exportArchive -archivePath build/supacode.xcarchive -exportPath build/export -exportOptionsPlist build/ExportOptions.plist 2>&1 | mise exec -- xcsift -qw --format toon'
 
-test: build-ghostty-xcframework
-	xcodebuild test -project supacode.xcodeproj -scheme supacode -destination "platform=macOS" CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" -skipMacroValidation -clonedSourcePackagesDirPath $(SPM_CACHE_DIR) 2>&1
+test: generate-project
+	xcodebuild test -workspace "$(PROJECT_WORKSPACE)" -scheme "$(APP_SCHEME)" -destination "platform=macOS" CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" -skipMacroValidation 2>&1
 
 format: # Format code with swift-format (local only)
 	swift-format -p --in-place --recursive --configuration ./.swift-format.json supacode supacodeTests
@@ -87,7 +93,7 @@ log-stream: # Stream logs from the app via log stream
 
 bump-version: # Bump app version (usage: make bump-version [VERSION=x.x.x] [BUILD=123])
 	@if [ -z "$(VERSION)" ]; then \
-		current="$$(/usr/bin/awk -F' = ' '/MARKETING_VERSION = [0-9.]+;/{gsub(/;/,"",$$2);print $$2; exit}' "$(CURRENT_MAKEFILE_DIR)/supacode.xcodeproj/project.pbxproj")"; \
+		current="$$(/usr/bin/awk -F' = ' '/^MARKETING_VERSION = [0-9.]+$$/{print $$2; exit}' "$(VERSION_XCCONFIG)")"; \
 		if [ -z "$$current" ]; then \
 			echo "error: MARKETING_VERSION not found"; \
 			exit 1; \
@@ -104,7 +110,7 @@ bump-version: # Bump app version (usage: make bump-version [VERSION=x.x.x] [BUIL
 		version="$(VERSION)"; \
 	fi; \
 	if [ -z "$(BUILD)" ]; then \
-		build="$$(/usr/bin/awk -F' = ' '/CURRENT_PROJECT_VERSION = [0-9]+;/{gsub(/;/,"",$$2);print $$2; exit}' "$(CURRENT_MAKEFILE_DIR)/supacode.xcodeproj/project.pbxproj")"; \
+		build="$$(/usr/bin/awk -F' = ' '/^CURRENT_PROJECT_VERSION = [0-9]+$$/{print $$2; exit}' "$(VERSION_XCCONFIG)")"; \
 		if [ -z "$$build" ]; then \
 			echo "error: CURRENT_PROJECT_VERSION not found"; \
 			exit 1; \
@@ -117,11 +123,11 @@ bump-version: # Bump app version (usage: make bump-version [VERSION=x.x.x] [BUIL
 		fi; \
 		build="$(BUILD)"; \
 	fi; \
-	sed -i '' "s/MARKETING_VERSION = [0-9.]*;/MARKETING_VERSION = $$version;/g" \
-		"$(CURRENT_MAKEFILE_DIR)/supacode.xcodeproj/project.pbxproj"; \
-	sed -i '' "s/CURRENT_PROJECT_VERSION = [0-9]*;/CURRENT_PROJECT_VERSION = $$build;/g" \
-		"$(CURRENT_MAKEFILE_DIR)/supacode.xcodeproj/project.pbxproj"; \
-	git add "$(CURRENT_MAKEFILE_DIR)/supacode.xcodeproj/project.pbxproj"; \
+	sed -i '' "s/^MARKETING_VERSION = .*/MARKETING_VERSION = $$version/" \
+		"$(VERSION_XCCONFIG)"; \
+	sed -i '' "s/^CURRENT_PROJECT_VERSION = .*/CURRENT_PROJECT_VERSION = $$build/" \
+		"$(VERSION_XCCONFIG)"; \
+	git add "$(VERSION_XCCONFIG)"; \
 	git commit -m "bump v$$version"; \
 	git tag -s "v$$version" -m "v$$version"; \
 	echo "version bumped to $$version (build $$build), tagged v$$version"

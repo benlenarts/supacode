@@ -31,6 +31,9 @@ playground.xcworkspace
 
 .build/
 .derivedData/
+supacode.xcodeproj/
+supacode.xcworkspace/
+Tuist/Dependencies/
 
 # CocoaPods
 #
