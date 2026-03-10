@@ -6,6 +6,11 @@ struct V2TerminalDetailView: View {
     let newTerminal: (() -> Void)?
     let closeSurface: (() -> Void)?
     let closeTab: (() -> Void)?
+    let startSearch: (() -> Void)?
+    let searchSelection: (() -> Void)?
+    let navigateSearchNext: (() -> Void)?
+    let navigateSearchPrevious: (() -> Void)?
+    let endSearch: (() -> Void)?
   }
 
   let store: StoreOf<AppFeature>
@@ -39,6 +44,11 @@ struct V2TerminalDetailView: View {
     .focusedSceneValue(\.newTerminalAction, focusedActions.newTerminal)
     .focusedSceneValue(\.closeSurfaceAction, focusedActions.closeSurface)
     .focusedSceneValue(\.closeTabAction, focusedActions.closeTab)
+    .focusedSceneValue(\.startSearchAction, focusedActions.startSearch)
+    .focusedSceneValue(\.searchSelectionAction, focusedActions.searchSelection)
+    .focusedSceneValue(\.navigateSearchNextAction, focusedActions.navigateSearchNext)
+    .focusedSceneValue(\.navigateSearchPreviousAction, focusedActions.navigateSearchPrevious)
+    .focusedSceneValue(\.endSearchAction, focusedActions.endSearch)
   }
 
   private func syncSelectedSession() {
@@ -50,7 +60,16 @@ struct V2TerminalDetailView: View {
     send: @escaping @MainActor (TerminalClient.Command) -> Void
   ) -> FocusedActions {
     guard let selectedSession else {
-      return FocusedActions(newTerminal: nil, closeSurface: nil, closeTab: nil)
+      return FocusedActions(
+        newTerminal: nil,
+        closeSurface: nil,
+        closeTab: nil,
+        startSearch: nil,
+        searchSelection: nil,
+        navigateSearchNext: nil,
+        navigateSearchPrevious: nil,
+        endSearch: nil
+      )
     }
     return FocusedActions(
       newTerminal: {
@@ -61,6 +80,21 @@ struct V2TerminalDetailView: View {
       },
       closeTab: {
         send(.closeFocusedTab(selectedSession))
+      },
+      startSearch: {
+        send(.startSearch(selectedSession))
+      },
+      searchSelection: {
+        send(.searchSelection(selectedSession))
+      },
+      navigateSearchNext: {
+        send(.navigateSearchNext(selectedSession))
+      },
+      navigateSearchPrevious: {
+        send(.navigateSearchPrevious(selectedSession))
+      },
+      endSearch: {
+        send(.endSearch(selectedSession))
       }
     )
   }
