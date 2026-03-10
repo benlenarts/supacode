@@ -1,7 +1,7 @@
 ---
 tracker:
   kind: linear
-  project_slug: "v2-219986392af9"
+  project_slug: "supabitapp"
   active_states:
     - Todo
     - In Progress
