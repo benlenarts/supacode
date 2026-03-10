@@ -130,8 +130,7 @@ struct SupacodeApp: App {
 
   var body: some Scene {
     Window("Supacode", id: "main") {
-      if
-        let ghostty,
+      if let ghostty,
         let terminalManager,
         let ghosttyShortcuts,
         let commandKeyObserver
@@ -148,6 +147,7 @@ struct SupacodeApp: App {
     }
     .commands {
       if !Self.isRunningTests {
+        WorkspaceCommands(store: store)
         SidebarCommands()
         if let updaterController {
           UpdateCommands(updaterController: updaterController)

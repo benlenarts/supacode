@@ -8,6 +8,7 @@ import Testing
 struct AppShortcutsTests {
   @Test func displaySymbolsMatchDisplay() {
     let shortcuts: [AppShortcut] = [
+      AppShortcuts.openWorkspace,
       AppShortcuts.toggleLeftSidebar,
     ]
 
@@ -47,6 +48,7 @@ struct AppShortcutsTests {
   @Test func ghosttyCLIArgumentsKeepSidebarUnbindAndTabBinds() {
     let arguments = AppShortcuts.ghosttyCLIKeybindArguments
 
+    #expect(arguments.contains(AppShortcuts.openWorkspace.ghosttyUnbindArgument))
     #expect(arguments.contains(AppShortcuts.toggleLeftSidebar.ghosttyUnbindArgument))
 
     for argument in AppShortcuts.tabSelectionGhosttyKeybindArguments {

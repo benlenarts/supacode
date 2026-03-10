@@ -23,11 +23,19 @@ struct V2SidebarView: View {
         }
         .buttonStyle(.plain)
         .help("Open \(session.name)")
+        .contextMenu {
+          Button("Remove Workspace", systemImage: "trash") {
+            store.send(.removeWorkspace(session.id))
+          }
+        }
         .listRowBackground(rowBackground(for: session.id))
       }
     }
     .listStyle(.sidebar)
-    .navigationTitle("Sessions")
+    .navigationTitle("Workspaces")
+    .safeAreaInset(edge: .bottom) {
+      V2SidebarFooterView(store: store)
+    }
   }
 
   @ViewBuilder
@@ -38,6 +46,31 @@ struct V2SidebarView: View {
         .padding(.vertical, 2)
     } else {
       Color.clear
+    }
+  }
+}
+
+private struct V2SidebarFooterView: View {
+  let store: StoreOf<AppFeature>
+
+  var body: some View {
+    HStack {
+      Button {
+        store.send(.setWorkspacePickerPresented(true))
+      } label: {
+        Label("Add Workspace", systemImage: "folder.badge.plus")
+          .font(.callout)
+      }
+      .help("Add Workspace (\(AppShortcuts.openWorkspace.display))")
+      Spacer()
+    }
+    .buttonStyle(.plain)
+    .padding(.horizontal, 12)
+    .padding(.vertical, 8)
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .background(.regularMaterial)
+    .overlay(alignment: .top) {
+      Divider()
     }
   }
 }

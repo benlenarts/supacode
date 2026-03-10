@@ -71,6 +71,7 @@ let project = Project(
         .external(name: "ComposableArchitecture"),
         .external(name: "Dependencies"),
         .external(name: "CasePaths"),
+        .external(name: "Sharing"),
         .external(name: "Sparkle"),
         .external(name: "Sentry"),
         .external(name: "PostHog"),
@@ -108,6 +109,7 @@ let project = Project(
       dependencies: [
         .target(name: "supacode"),
         .external(name: "DependenciesTestSupport"),
+        .external(name: "Sharing"),
       ],
       settings: .settings(
         base: [

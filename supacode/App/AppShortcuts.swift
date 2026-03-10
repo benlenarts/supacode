@@ -78,6 +78,7 @@ enum AppShortcuts {
     TabSelectionBinding(unicode: "0", physical: "digit_0", tabIndex: 10),
   ]
 
+  static let openWorkspace = AppShortcut(key: "o", modifiers: [.command, .shift])
   static let toggleLeftSidebar = AppShortcut(key: "[", modifiers: .command)
 
   static let tabSelectionGhosttyKeybindArguments: [String] = tabSelectionBindings.flatMap { binding in
@@ -92,6 +93,7 @@ enum AppShortcuts {
   }
 
   static let all: [AppShortcut] = [
+    openWorkspace,
     toggleLeftSidebar,
   ]
 }

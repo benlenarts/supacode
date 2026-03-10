@@ -33,7 +33,19 @@ struct V2TerminalDetailView: View {
         )
         .id(selectedSession.id)
       } else {
-        ContentUnavailableView("No session selected", systemImage: "terminal")
+        ContentUnavailableView {
+          Label("No workspaces yet", systemImage: "folder")
+        } description: {
+          Text("Add a folder to start a workspace terminal.")
+        } actions: {
+          Button("Open Workspace...") {
+            store.send(.setWorkspacePickerPresented(true))
+          }
+          .keyboardShortcut(
+            AppShortcuts.openWorkspace.keyEquivalent,
+            modifiers: AppShortcuts.openWorkspace.modifiers
+          )
+        }
       }
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity)

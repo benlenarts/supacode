@@ -42,6 +42,7 @@ let package = Package(
     .package(url: "https://github.com/sparkle-project/Sparkle", exact: "2.9.0-beta.2"),
     .package(url: "https://github.com/pointfreeco/swift-dependencies", exact: "1.10.1"),
     .package(url: "https://github.com/pointfreeco/swift-composable-architecture", exact: "1.23.1"),
+    .package(url: "https://github.com/pointfreeco/swift-sharing", exact: "2.7.4"),
     .package(url: "https://github.com/getsentry/sentry-cocoa", exact: "9.3.0"),
     .package(url: "https://github.com/PostHog/posthog-ios.git", exact: "3.38.0"),
   ]
