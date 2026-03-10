@@ -2,7 +2,7 @@ name: Release Tip
 
 on:
   push:
-    branches: [main]
+    branches: [v2]
 
   workflow_dispatch: {}
 
@@ -12,7 +12,7 @@ concurrency:
 
 jobs:
   check:
-    if: github.event_name == 'workflow_dispatch' || github.ref_name == 'main'
+    if: github.event_name == 'workflow_dispatch' || github.ref_name == 'v2'
     runs-on: ubuntu-latest
     outputs:
       should_skip: ${{ steps.check.outputs.should_skip }}
