@@ -8,24 +8,11 @@ import Testing
 struct AppShortcutsTests {
   @Test func displaySymbolsMatchDisplay() {
     let shortcuts: [AppShortcut] = [
-      AppShortcuts.openSettings,
-      AppShortcuts.newWorktree,
-      AppShortcuts.copyPath,
+      AppShortcuts.toggleLeftSidebar,
     ]
 
     for shortcut in shortcuts {
       expectNoDifference(shortcut.displaySymbols.joined(), shortcut.display)
-    }
-  }
-
-  @Test func worktreeSelectionUsesControlNumberShortcuts() {
-    expectNoDifference(
-      AppShortcuts.worktreeSelection.map(\.display),
-      ["⌃1", "⌃2", "⌃3", "⌃4", "⌃5", "⌃6", "⌃7", "⌃8", "⌃9", "⌃0"]
-    )
-
-    for shortcut in AppShortcuts.worktreeSelection {
-      #expect(shortcut.modifiers == .control)
     }
   }
 
@@ -57,12 +44,10 @@ struct AppShortcutsTests {
     )
   }
 
-  @Test func ghosttyCLIArgumentsKeepWorktreeUnbindsAndTabBinds() {
+  @Test func ghosttyCLIArgumentsKeepSidebarUnbindAndTabBinds() {
     let arguments = AppShortcuts.ghosttyCLIKeybindArguments
 
-    for shortcut in AppShortcuts.worktreeSelection {
-      #expect(arguments.contains(shortcut.ghosttyUnbindArgument))
-    }
+    #expect(arguments.contains(AppShortcuts.toggleLeftSidebar.ghosttyUnbindArgument))
 
     for argument in AppShortcuts.tabSelectionGhosttyKeybindArguments {
       #expect(arguments.contains(argument))

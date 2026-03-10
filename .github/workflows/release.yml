@@ -54,9 +54,9 @@ jobs:
       - run: echo "TAG=${{ github.event.release.tag_name }}" >> "$GITHUB_ENV"
       - name: Override build number for versioning scheme
         run: |
-          BASE=$(awk -F' = ' '/CURRENT_PROJECT_VERSION = [0-9]+/{gsub(/;/,""); print $2; exit}' supacode.xcodeproj/project.pbxproj)
+          BASE=$(awk -F' = ' '/^CURRENT_PROJECT_VERSION = [0-9]+$/{print $2; exit}' Configurations/Project.xcconfig)
           BUILD_NUMBER=$((BASE * 1000))
-          sed -i '' "s/CURRENT_PROJECT_VERSION = [0-9]*/CURRENT_PROJECT_VERSION = $BUILD_NUMBER/g" supacode.xcodeproj/project.pbxproj
+          sed -i '' "s/^CURRENT_PROJECT_VERSION = .*/CURRENT_PROJECT_VERSION = $BUILD_NUMBER/" Configurations/Project.xcconfig
       - name: Setup keychain
         run: |
           echo "$DEVELOPER_ID_CERT_P12" | base64 --decode > build-cert.p12
@@ -86,7 +86,7 @@ jobs:
           sed -i '' "s|__SENTRY_DSN__|${SENTRY_DSN}|g" supacode/App/supacodeApp.swift
           sed -i '' "s|__POSTHOG_API_KEY__|${POSTHOG_API_KEY}|g" supacode/App/supacodeApp.swift
           sed -i '' "s|__POSTHOG_HOST__|${POSTHOG_HOST}|g" supacode/App/supacodeApp.swift
-      - name: Archive Xcode project
+      - name: Archive generated workspace
         run: make archive
       - name: Upload dSYMs
         uses: actions/upload-artifact@v6

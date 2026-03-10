@@ -12,21 +12,24 @@ Native terminal coding agents command center.
 ## Requirements
 
 - macOS 26.0+
-- [mise](https://mise.jdx.dev/) (for dependencies)
+- [mise](https://mise.jdx.dev/) (for pinned toolchain dependencies, including Tuist)
 
 ## Building
 
 ```bash
 make build-ghostty-xcframework   # Build GhosttyKit from Zig source
-make build-app                   # Build macOS app (Debug)
-make run-app                     # Build and launch
+make generate-project            # Install packages and generate when manifest inputs changed
+make build-app                   # Generate if needed, then build macOS app (Debug)
+make run-app                     # Generate if needed, then build and launch
 ```
+
+`supacode.xcworkspace` and `supacode.xcodeproj` are generated outputs and stay out of git.
 
 ## Development
 
 ```bash
 make check     # Run swiftformat and swiftlint
-make test      # Run tests
+make test      # Generate if needed, then run tests
 make format    # Run swift-format
 ```
 
@@ -34,4 +37,3 @@ make format    # Run swift-format
 
 - I actual prefer a well written issue describing features/bugs u want rather than a vibe-coded PR
 - I review every line personally and will close if I feel like the quality is not up to standard
-

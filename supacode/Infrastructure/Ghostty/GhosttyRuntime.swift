@@ -24,7 +24,8 @@ final class GhosttyRuntime {
   private var lastColorScheme: ghostty_color_scheme_e?
   var onConfigChange: (() -> Void)?
 
-  init() {
+  init(skipNativeRuntime: Bool = false) {
+    guard !skipNativeRuntime else { return }
     guard let config = Self.loadConfig() else {
       preconditionFailure("ghostty_config_new failed")
     }

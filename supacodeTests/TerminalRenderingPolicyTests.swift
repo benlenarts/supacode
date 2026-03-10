@@ -7,7 +7,7 @@ import Testing
 struct TerminalRenderingPolicyTests {
   @Test func surfaceActivityForSelectedVisibleFocusedSurfaceIsFocused() {
     let focusedID = UUID()
-    let activity = WorktreeTerminalState.surfaceActivity(
+    let activity = TerminalSessionState.surfaceActivity(
       isSelectedTab: true,
       windowIsVisible: true,
       windowIsKey: true,
@@ -19,7 +19,7 @@ struct TerminalRenderingPolicyTests {
   }
 
   @Test func surfaceActivityForSelectedVisibleUnfocusedSurfaceIsNotFocused() {
-    let activity = WorktreeTerminalState.surfaceActivity(
+    let activity = TerminalSessionState.surfaceActivity(
       isSelectedTab: true,
       windowIsVisible: true,
       windowIsKey: true,
@@ -32,7 +32,7 @@ struct TerminalRenderingPolicyTests {
 
   @Test func surfaceActivityForSelectedTabInBackgroundWindowIsVisibleButNotFocused() {
     let surfaceID = UUID()
-    let activity = WorktreeTerminalState.surfaceActivity(
+    let activity = TerminalSessionState.surfaceActivity(
       isSelectedTab: true,
       windowIsVisible: true,
       windowIsKey: false,
@@ -45,7 +45,7 @@ struct TerminalRenderingPolicyTests {
 
   @Test func surfaceActivityForOccludedWindowIsHiddenAndUnfocused() {
     let surfaceID = UUID()
-    let activity = WorktreeTerminalState.surfaceActivity(
+    let activity = TerminalSessionState.surfaceActivity(
       isSelectedTab: true,
       windowIsVisible: false,
       windowIsKey: true,
@@ -58,7 +58,7 @@ struct TerminalRenderingPolicyTests {
 
   @Test func surfaceActivityForUnselectedTabIsHiddenAndUnfocused() {
     let surfaceID = UUID()
-    let activity = WorktreeTerminalState.surfaceActivity(
+    let activity = TerminalSessionState.surfaceActivity(
       isSelectedTab: false,
       windowIsVisible: true,
       windowIsKey: true,
