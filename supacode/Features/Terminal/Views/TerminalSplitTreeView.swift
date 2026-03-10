@@ -82,7 +82,7 @@ struct TerminalSplitTreeView: View {
 
     var body: some View {
       GeometryReader { geometry in
-        GhosttyTerminalView(surfaceView: surfaceView)
+        GhosttyTerminalView(surfaceView: surfaceView, size: geometry.size)
           .frame(maxWidth: .infinity, maxHeight: .infinity)
           .overlay(alignment: .top) {
             GhosttySurfaceProgressOverlay(state: surfaceView.bridge.state)

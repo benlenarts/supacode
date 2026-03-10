@@ -26,12 +26,12 @@ final class GhosttySurfaceBridge {
   func handleAction(target: ghostty_target_s, action: ghostty_action_s) -> Bool {
     if let handled = handleAppAction(action) { return handled }
     if let handled = handleSplitAction(action) { return handled }
-    if handleTitleAndPath(action) { return false }
-    if handleCommandStatus(action) { return false }
-    if handleMouseAndLink(action) { return false }
-    if handleSearchAndScroll(action) { return false }
-    if handleSizeAndKey(action) { return false }
-    if handleConfigAndShell(action) { return false }
+    if handleTitleAndPath(action) { return true }
+    if handleCommandStatus(action) { return true }
+    if handleMouseAndLink(action) { return true }
+    if handleSearchAndScroll(action) { return true }
+    if handleSizeAndKey(action) { return true }
+    if handleConfigAndShell(action) { return true }
     return false
   }
 
@@ -175,7 +175,6 @@ final class GhosttySurfaceBridge {
       return true
 
     case GHOSTTY_ACTION_PROMPT_TITLE:
-      state.promptTitle = action.action.prompt_title
       return true
 
     case GHOSTTY_ACTION_PWD:
@@ -228,23 +227,15 @@ final class GhosttySurfaceBridge {
       return true
 
     case GHOSTTY_ACTION_COMMAND_FINISHED:
-      let info = action.action.command_finished
-      state.commandExitCode = info.exit_code == -1 ? nil : Int(info.exit_code)
-      state.commandDuration = info.duration
       return true
 
     case GHOSTTY_ACTION_SHOW_CHILD_EXITED:
-      let info = action.action.child_exited
-      state.childExitCode = info.exit_code
-      state.childExitTimeMs = info.timetime_ms
       return true
 
     case GHOSTTY_ACTION_READONLY:
-      state.readOnly = action.action.readonly
       return true
 
     case GHOSTTY_ACTION_RING_BELL:
-      state.bellCount += 1
       return true
 
     default:
@@ -255,36 +246,25 @@ final class GhosttySurfaceBridge {
   private func handleMouseAndLink(_ action: ghostty_action_s) -> Bool {
     switch action.tag {
     case GHOSTTY_ACTION_MOUSE_SHAPE:
-      state.mouseShape = action.action.mouse_shape
       surfaceView?.setMouseShape(action.action.mouse_shape)
       return true
 
     case GHOSTTY_ACTION_MOUSE_VISIBILITY:
-      state.mouseVisibility = action.action.mouse_visibility
       surfaceView?.setMouseVisibility(action.action.mouse_visibility == GHOSTTY_MOUSE_VISIBLE)
       return true
 
     case GHOSTTY_ACTION_MOUSE_OVER_LINK:
-      let link = action.action.mouse_over_link
-      state.mouseOverLink = string(from: link.url, length: link.len)
       return true
 
     case GHOSTTY_ACTION_RENDERER_HEALTH:
-      state.rendererHealth = action.action.renderer_health
       return true
 
     case GHOSTTY_ACTION_OPEN_URL:
       let openUrl = action.action.open_url
-      state.openUrlKind = openUrl.kind
-      state.openUrl = string(from: openUrl.url, length: openUrl.len)
-      return true
+      guard let url = string(from: openUrl.url, length: openUrl.len) else { return false }
+      return GhosttyActionSupport.openURL(url, kind: openUrl.kind)
 
     case GHOSTTY_ACTION_COLOR_CHANGE:
-      let change = action.action.color_change
-      state.colorChangeKind = change.kind
-      state.colorChangeR = change.r
-      state.colorChangeG = change.g
-      state.colorChangeB = change.b
       return true
 
     default:
@@ -339,11 +319,6 @@ final class GhosttySurfaceBridge {
   private func handleSizeAndKey(_ action: ghostty_action_s) -> Bool {
     switch action.tag {
     case GHOSTTY_ACTION_SIZE_LIMIT:
-      let sizeLimit = action.action.size_limit
-      state.sizeLimitMinWidth = sizeLimit.min_width
-      state.sizeLimitMinHeight = sizeLimit.min_height
-      state.sizeLimitMaxWidth = sizeLimit.max_width
-      state.sizeLimitMaxHeight = sizeLimit.max_height
       return true
 
     case GHOSTTY_ACTION_INITIAL_SIZE:
@@ -358,33 +333,25 @@ final class GhosttySurfaceBridge {
       return true
 
     case GHOSTTY_ACTION_RESET_WINDOW_SIZE:
-      state.resetWindowSizeCount += 1
-      return true
+      return surfaceView?.resetWindowSize() ?? false
 
     case GHOSTTY_ACTION_KEY_SEQUENCE:
-      let seq = action.action.key_sequence
-      state.keySequenceActive = seq.active
-      state.keySequenceTrigger = seq.trigger
+      state.keySequenceActive = action.action.key_sequence.active
       return true
 
     case GHOSTTY_ACTION_KEY_TABLE:
       let table = action.action.key_table
-      state.keyTableTag = table.tag
       switch table.tag {
       case GHOSTTY_KEY_TABLE_ACTIVATE:
-        state.keyTableName = string(
-          from: table.value.activate.name, length: table.value.activate.len)
         state.keyTableDepth += 1
       case GHOSTTY_KEY_TABLE_DEACTIVATE:
-        state.keyTableName = nil
         if state.keyTableDepth > 0 {
           state.keyTableDepth -= 1
         }
       case GHOSTTY_KEY_TABLE_DEACTIVATE_ALL:
-        state.keyTableName = nil
         state.keyTableDepth = 0
       default:
-        state.keyTableName = nil
+        break
       }
       return true
 
@@ -396,7 +363,6 @@ final class GhosttySurfaceBridge {
   private func handleConfigAndShell(_ action: ghostty_action_s) -> Bool {
     switch action.tag {
     case GHOSTTY_ACTION_SECURE_INPUT:
-      state.secureInput = action.action.secure_input
       switch action.action.secure_input {
       case GHOSTTY_SECURE_INPUT_ON:
         surfaceView?.passwordInput = true
@@ -410,27 +376,24 @@ final class GhosttySurfaceBridge {
       return true
 
     case GHOSTTY_ACTION_FLOAT_WINDOW:
-      state.floatWindow = action.action.float_window
-      return true
+      return false
 
     case GHOSTTY_ACTION_RELOAD_CONFIG:
-      state.reloadConfigSoft = action.action.reload_config.soft
       return true
 
     case GHOSTTY_ACTION_CONFIG_CHANGE:
-      state.configChangeCount += 1
       return true
 
     case GHOSTTY_ACTION_OPEN_CONFIG:
-      state.openConfigCount += 1
-      return true
+      return GhosttyActionSupport.openConfig()
 
     case GHOSTTY_ACTION_PRESENT_TERMINAL:
-      state.presentTerminalCount += 1
+      guard let surfaceView else { return false }
+      surfaceView.window?.makeKeyAndOrderFront(nil)
+      surfaceView.requestFocus()
       return true
     case GHOSTTY_ACTION_QUIT_TIMER:
-      state.quitTimer = action.action.quit_timer
-      return true
+      return false
 
     default:
       return false

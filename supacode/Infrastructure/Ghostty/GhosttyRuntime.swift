@@ -58,6 +58,7 @@ final class GhosttyRuntime {
       preconditionFailure("ghostty_app_new failed")
     }
     self.app = app
+    setAppFocus((NSApp?.isActive) == true)
 
     let center = NotificationCenter.default
     observers.append(
@@ -357,6 +358,7 @@ final class GhosttyRuntime {
     action: ghostty_action_s
   ) -> Bool {
     guard let app = ghostty_app_t(bitPattern: appBits) else { return false }
+    var handled = false
     if let runtime = runtime(fromApp: app) {
       if action.tag == GHOSTTY_ACTION_CONFIG_CHANGE, target.tag == GHOSTTY_TARGET_APP {
         let config = action.action.config_change.config
@@ -364,16 +366,21 @@ final class GhosttyRuntime {
         runtime.setConfig(clone)
         runtime.onConfigChange?()
         NotificationCenter.default.post(name: .ghosttyRuntimeConfigDidChange, object: runtime)
+        handled = true
       }
       if action.tag == GHOSTTY_ACTION_RELOAD_CONFIG {
         let soft = action.action.reload_config.soft
         runtime.reloadConfig(soft: soft, target: target)
+        handled = true
+      }
+      if action.tag == GHOSTTY_ACTION_OPEN_CONFIG {
+        return GhosttyActionSupport.openConfig()
       }
     }
-    guard target.tag == GHOSTTY_TARGET_SURFACE else { return false }
-    guard let surface = target.target.surface else { return false }
-    guard let bridge = surfaceBridge(fromSurface: surface) else { return false }
-    return bridge.handleAction(target: target, action: action)
+    guard target.tag == GHOSTTY_TARGET_SURFACE else { return handled }
+    guard let surface = target.target.surface else { return handled }
+    guard let bridge = surfaceBridge(fromSurface: surface) else { return handled }
+    return bridge.handleAction(target: target, action: action) || handled
   }
 
   private static func readClipboard(
@@ -404,7 +411,8 @@ final class GhosttyRuntime {
     guard let bridge = surfaceBridge(fromUserdata: userdata), let surface = bridge.surface else {
       return
     }
-    value.withCString { ptr in
+    let response = GhosttyActionSupport.confirmClipboard(value, request: request) ? value : ""
+    response.withCString { ptr in
       ghostty_surface_complete_clipboard_request(surface, ptr, state, true)
     }
   }
@@ -414,9 +422,21 @@ final class GhosttyRuntime {
     items: [(mime: String, data: String)],
     confirm: Bool
   ) {
-    _ = confirm
-
     guard let pasteboard = NSPasteboard.ghostty(location) else { return }
+    if confirm {
+      guard let content = items.first(where: { $0.mime == "text/plain" })?.data else { return }
+      guard GhosttyActionSupport.confirmClipboard(
+        content,
+        request: GHOSTTY_CLIPBOARD_REQUEST_OSC_52_WRITE
+      )
+      else {
+        return
+      }
+      pasteboard.declareTypes([.string], owner: nil)
+      pasteboard.setString(content, forType: .string)
+      return
+    }
+
     let types = items.compactMap { NSPasteboard.PasteboardType(mimeType: $0.mime) }
     pasteboard.declareTypes(types, owner: nil)
     for item in items {

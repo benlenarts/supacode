@@ -124,6 +124,9 @@ struct SupacodeApp: App {
     .commands {
       if !Self.isRunningTests {
         SidebarCommands()
+        if let ghosttyShortcuts {
+          TerminalCommands(ghosttyShortcuts: ghosttyShortcuts)
+        }
       }
     }
   }
