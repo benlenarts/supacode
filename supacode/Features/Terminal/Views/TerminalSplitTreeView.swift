@@ -79,6 +79,7 @@ struct TerminalSplitTreeView: View {
     let action: (Operation) -> Void
 
     @State private var dropState: DropState = .idle
+    @State private var isPaneHovered = false
 
     var body: some View {
       GeometryReader { geometry in
@@ -94,12 +95,15 @@ struct TerminalSplitTreeView: View {
           }
           .overlay(alignment: .top) {
             if isSplit {
-              DragHandle(surfaceView: surfaceView)
+              DragHandle(surfaceView: surfaceView, isVisible: isPaneHovered)
             }
           }
           .background {
             Color.clear
               .contentShape(.rect)
+              .onHover { hovering in
+                isPaneHovered = hovering
+              }
               .onDrop(
                 of: [TerminalSplitTreeView.dragType],
                 delegate: SplitDropDelegate(
@@ -122,6 +126,7 @@ struct TerminalSplitTreeView: View {
 
   struct DragHandle: View {
     let surfaceView: GhosttySurfaceView
+    let isVisible: Bool
     private let handleHeight: CGFloat = 10
     @State private var isHovering = false
 
@@ -131,13 +136,15 @@ struct TerminalSplitTreeView: View {
         .frame(maxWidth: .infinity)
         .frame(height: handleHeight)
         .overlay {
-          if isHovering {
+          if isVisible || isHovering {
             Image(systemName: "ellipsis")
               .font(.system(.callout, weight: .semibold))
               .foregroundStyle(.primary.opacity(0.5))
               .accessibilityHidden(true)
           }
         }
+        .opacity(isVisible || isHovering ? 1 : 0)
+        .allowsHitTesting(isVisible || isHovering)
         .contentShape(.rect)
         .onHover { hovering in
           guard hovering != isHovering else { return }
