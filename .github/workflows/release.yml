@@ -124,22 +124,9 @@ jobs:
           codesign -f -s "$DEVELOPER_ID_IDENTITY_SHA" -o runtime --timestamp -v "$SPARKLE/Autoupdate"
           codesign -f -s "$DEVELOPER_ID_IDENTITY_SHA" -o runtime --timestamp -v "$SPARKLE/Sparkle"
           codesign -f -s "$DEVELOPER_ID_IDENTITY_SHA" -o runtime --timestamp -v "$APP_PATH/Contents/Frameworks/Sparkle.framework"
-          SENTRY_FRAMEWORK="$APP_PATH/Contents/Frameworks/Sentry.framework"
-          if [ -d "$SENTRY_FRAMEWORK" ]; then
-            SENTRY_BINARY="$(find "$SENTRY_FRAMEWORK" -name Sentry -type f -print -quit)"
-            if [ -n "$SENTRY_BINARY" ]; then
-              codesign -f -s "$DEVELOPER_ID_IDENTITY_SHA" -o runtime --timestamp -v "$SENTRY_BINARY"
-            fi
-            codesign -f -s "$DEVELOPER_ID_IDENTITY_SHA" -o runtime --timestamp -v "$SENTRY_FRAMEWORK"
-          fi
-          POSTHOG_FRAMEWORK="$APP_PATH/Contents/Frameworks/PostHog.framework"
-          if [ -d "$POSTHOG_FRAMEWORK" ]; then
-            POSTHOG_BINARY="$(find "$POSTHOG_FRAMEWORK" -name PostHog -type f -print -quit)"
-            if [ -n "$POSTHOG_BINARY" ]; then
-              codesign -f -s "$DEVELOPER_ID_IDENTITY_SHA" -o runtime --timestamp -v "$POSTHOG_BINARY"
-            fi
-            codesign -f -s "$DEVELOPER_ID_IDENTITY_SHA" -o runtime --timestamp -v "$POSTHOG_FRAMEWORK"
-          fi
+          SENTRY_CPP_HELPER_FRAMEWORK="$APP_PATH/Contents/Frameworks/SentryCppHelper.framework"
+          codesign -f -s "$DEVELOPER_ID_IDENTITY_SHA" -o runtime --timestamp -v "$SENTRY_CPP_HELPER_FRAMEWORK/Versions/A/SentryCppHelper"
+          codesign -f -s "$DEVELOPER_ID_IDENTITY_SHA" -o runtime --timestamp -v "$SENTRY_CPP_HELPER_FRAMEWORK"
           codesign -f -s "$DEVELOPER_ID_IDENTITY_SHA" -o runtime --timestamp --preserve-metadata=entitlements,requirements,flags -v "$APP_PATH"
 
           codesign -d --entitlements - "$APP_PATH/Contents/MacOS/supacode" 2>&1 | tee /tmp/supacode-entitlements.txt
