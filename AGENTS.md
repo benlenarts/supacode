@@ -21,6 +21,10 @@ Requires [mise](https://mise.jdx.dev/) for zig, tuist, swiftlint, and xcsift too
 
 Supacode is a macOS orchestrator for running multiple coding agents in parallel, using GhosttyKit as the underlying terminal.
 
+Reference docs:
+
+- `docs/ghostty-integration.md`: Supacode's Ghostty vendoring model, runtime bootstrap, surface lifecycle, upstream macOS app comparison, and upgrade checklist.
+
 ### Core Data Flow
 
 ```
