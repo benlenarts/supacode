@@ -2,6 +2,7 @@ import AppKit
 import ComposableArchitecture
 import Foundation
 import GhosttyKit
+import PostHog
 import Sentry
 import Sparkle
 import SwiftUI
@@ -88,6 +89,13 @@ struct SupacodeApp: App {
         options.dsn = "__SENTRY_DSN__"
         options.enableAppHangTracking = false
       }
+
+      let config = PostHogConfig(
+        apiKey: "__POSTHOG_API_KEY__",
+        host: "__POSTHOG_HOST__"
+      )
+      config.enableSwizzling = false
+      PostHogSDK.shared.setup(config)
     #endif
     if let resourceURL = Bundle.main.resourceURL?.appendingPathComponent("ghostty") {
       setenv("GHOSTTY_RESOURCES_DIR", resourceURL.path, 1)
