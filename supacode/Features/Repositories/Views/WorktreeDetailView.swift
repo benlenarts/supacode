@@ -329,6 +329,10 @@ struct WorktreeDetailView: View {
     private var flexibleSpacer: some ToolbarContent {
       if #available(macOS 26.0, *) {
         ToolbarSpacer(.flexible)
+      } else {
+        ToolbarItem {
+          Spacer()
+        }
       }
     }
 
@@ -336,6 +340,11 @@ struct WorktreeDetailView: View {
     private var fixedSpacer: some ToolbarContent {
       if #available(macOS 26.0, *) {
         ToolbarSpacer(.fixed)
+      } else {
+        ToolbarItem {
+          Spacer()
+            .frame(width: 8)
+        }
       }
     }
 

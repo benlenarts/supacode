@@ -216,6 +216,7 @@ private struct SidebarDragSessionModifier: ViewModifier {
           }
         }
     } else {
+      // No backport: purely cosmetic — hides hover buttons during drag
       content
     }
   }

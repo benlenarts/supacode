@@ -352,6 +352,7 @@ private struct DragSessionUpdatedModifier: ViewModifier {
           }
         }
     } else {
+      // No backport: purely cosmetic — hides PR info on dragged rows
       content
     }
   }
