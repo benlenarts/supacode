@@ -74,9 +74,9 @@ struct WorktreeEnvironmentTests {
     let launch = try #require(
       try makeBlockingScriptLaunch(
         script: """
-        docker compose down
-        codex exec "test"
-        """,
+          docker compose down
+          codex exec "test"
+          """,
         environment: worktree.scriptEnvironment,
         shellPath: "/opt/homebrew/bin/fish"
       )
@@ -142,8 +142,8 @@ struct WorktreeEnvironmentTests {
     #expect(
       try makeBlockingScriptLaunch(
         script: """
-          
-        """,
+            
+          """,
         environment: [
           "SUPACODE_ROOT_PATH": "/tmp/repo",
           "SUPACODE_WORKTREE_PATH": "/tmp/repo/wt-1",

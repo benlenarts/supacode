@@ -1187,14 +1187,14 @@ nonisolated func blockingScriptRunnerContents(
   let quotedScriptPath = shellSingleQuoted(scriptURL.path(percentEncoded: false))
 
   return """
-  #!/bin/sh
-  set -eu
-  IFS= read -r SUPACODE_ROOT_PATH < \(quotedRootPath)
-  IFS= read -r SUPACODE_WORKTREE_PATH < \(quotedWorktreePath)
-  IFS= read -r SUPACODE_SHELL_PATH < \(quotedShellPath)
-  export SUPACODE_ROOT_PATH SUPACODE_WORKTREE_PATH
-  exec "$SUPACODE_SHELL_PATH" -l \(quotedScriptPath)
-  """
+    #!/bin/sh
+    set -eu
+    IFS= read -r SUPACODE_ROOT_PATH < \(quotedRootPath)
+    IFS= read -r SUPACODE_WORKTREE_PATH < \(quotedWorktreePath)
+    IFS= read -r SUPACODE_SHELL_PATH < \(quotedShellPath)
+    export SUPACODE_ROOT_PATH SUPACODE_WORKTREE_PATH
+    exec "$SUPACODE_SHELL_PATH" -l \(quotedScriptPath)
+    """
 }
 
 nonisolated func shellSingleQuoted(_ value: String) -> String {

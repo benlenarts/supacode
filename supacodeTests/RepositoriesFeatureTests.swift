@@ -1087,7 +1087,7 @@ struct RepositoriesFeatureTests {
         id: pendingID,
         repositoryID: repository.id,
         progress: WorktreeCreationProgress(stage: .loadingLocalBranches)
-      ),
+      )
     ]
     let store = TestStore(initialState: state) {
       RepositoriesFeature()
@@ -1124,7 +1124,7 @@ struct RepositoriesFeatureTests {
           stage: .checkingRepositoryMode,
           worktreeName: "swift-otter"
         )
-      ),
+      )
     ]
     let store = TestStore(initialState: state) {
       RepositoriesFeature()
@@ -1315,7 +1315,7 @@ struct RepositoriesFeatureTests {
         addedLines: nil,
         removedLines: nil,
         pullRequest: makePullRequest(state: "MERGED")
-      ),
+      )
     ]
     let store = TestStore(initialState: state) {
       RepositoriesFeature()
@@ -2497,7 +2497,7 @@ struct RepositoriesFeatureTests {
         id: removedWorktree.id,
         repositoryID: repository.id,
         progress: WorktreeCreationProgress(stage: .choosingWorktreeName)
-      ),
+      )
     ]
     initialState.pinnedWorktreeIDs = [removedWorktree.id]
     initialState.worktreeInfoByID = [
@@ -2580,7 +2580,7 @@ struct RepositoriesFeatureTests {
         id: pendingID,
         repositoryID: repository.id,
         progress: WorktreeCreationProgress(stage: .loadingLocalBranches)
-      ),
+      )
     ]
     initialState.selection = .worktree(pendingID)
     initialState.sidebarSelectedWorktreeIDs = [existingWorktree.id, pendingID]
