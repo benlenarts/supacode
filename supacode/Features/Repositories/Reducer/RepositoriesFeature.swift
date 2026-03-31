@@ -877,8 +877,11 @@ struct RepositoriesFeature {
           repositoryOverridePath: repositorySettings.worktreeBaseDirectoryPath
         )
         let selectedBaseRef = repositorySettings.worktreeBaseRef
-        let copyIgnoredOnWorktreeCreate = repositorySettings.copyIgnoredOnWorktreeCreate
-        let copyUntrackedOnWorktreeCreate = repositorySettings.copyUntrackedOnWorktreeCreate
+        let globalSettings = settingsFile.global
+        let copyIgnoredOnWorktreeCreate =
+          repositorySettings.copyIgnoredOnWorktreeCreate ?? globalSettings.copyIgnoredOnWorktreeCreate
+        let copyUntrackedOnWorktreeCreate =
+          repositorySettings.copyUntrackedOnWorktreeCreate ?? globalSettings.copyUntrackedOnWorktreeCreate
         state.pendingWorktrees.append(
           PendingWorktree(
             id: pendingID,
@@ -1983,7 +1986,7 @@ struct RepositoriesFeature {
         var effects: [Effect<Action>] = [
           .run { _ in
             await repositoryPersistence.savePinnedWorktreeIDs(pinnedWorktreeIDs)
-          },
+          }
         ]
         if didUpdateWorktreeOrder {
           let worktreeOrderByRepository = state.worktreeOrderByRepository
@@ -2010,7 +2013,7 @@ struct RepositoriesFeature {
         var effects: [Effect<Action>] = [
           .run { _ in
             await repositoryPersistence.savePinnedWorktreeIDs(pinnedWorktreeIDs)
-          },
+          }
         ]
         if didUpdateWorktreeOrder {
           let worktreeOrderByRepository = state.worktreeOrderByRepository
@@ -2438,7 +2441,9 @@ struct RepositoriesFeature {
               return
             }
             @Shared(.repositorySettings(repoRoot)) var repositorySettings
-            let strategy = repositorySettings.pullRequestMergeStrategy
+            @Shared(.settingsFile) var settingsFile
+            let strategy =
+              repositorySettings.pullRequestMergeStrategy ?? settingsFile.global.pullRequestMergeStrategy
             await send(.showToast(.inProgress("Merging pull request…")))
             do {
               try await githubCLI.mergePullRequest(worktreeRoot, pullRequest.number, strategy)
