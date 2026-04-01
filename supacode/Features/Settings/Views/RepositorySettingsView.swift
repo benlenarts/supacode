@@ -135,7 +135,6 @@ private struct ScriptSection: View {
         .monospaced()
         .textEditorStyle(.plain)
         .autocorrectionDisabled()
-        .scrollContentBackground(.hidden)
         .frame(height: 112)
         .accessibilityLabel(title)
     } header: {
