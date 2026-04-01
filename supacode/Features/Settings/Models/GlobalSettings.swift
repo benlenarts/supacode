@@ -17,6 +17,9 @@ nonisolated struct GlobalSettings: Codable, Equatable, Sendable {
   var promptForWorktreeCreation: Bool
   var fetchOriginBeforeWorktreeCreation: Bool
   var defaultWorktreeBaseDirectoryPath: String?
+  var copyIgnoredOnWorktreeCreate: Bool
+  var copyUntrackedOnWorktreeCreate: Bool
+  var pullRequestMergeStrategy: PullRequestMergeStrategy
   var terminalThemeSyncEnabled: Bool
   var shortcutOverrides: [AppShortcutID: AppShortcutOverride]
 
@@ -38,6 +41,9 @@ nonisolated struct GlobalSettings: Codable, Equatable, Sendable {
     automaticallyArchiveMergedWorktrees: false,
     promptForWorktreeCreation: true,
     fetchOriginBeforeWorktreeCreation: true,
+    copyIgnoredOnWorktreeCreate: false,
+    copyUntrackedOnWorktreeCreate: false,
+    pullRequestMergeStrategy: .merge,
     terminalThemeSyncEnabled: false,
     defaultWorktreeBaseDirectoryPath: nil,
     shortcutOverrides: [:]
@@ -61,6 +67,9 @@ nonisolated struct GlobalSettings: Codable, Equatable, Sendable {
     automaticallyArchiveMergedWorktrees: Bool,
     promptForWorktreeCreation: Bool,
     fetchOriginBeforeWorktreeCreation: Bool = true,
+    copyIgnoredOnWorktreeCreate: Bool = false,
+    copyUntrackedOnWorktreeCreate: Bool = false,
+    pullRequestMergeStrategy: PullRequestMergeStrategy = .merge,
     terminalThemeSyncEnabled: Bool = false,
     defaultWorktreeBaseDirectoryPath: String? = nil,
     shortcutOverrides: [AppShortcutID: AppShortcutOverride] = [:]
@@ -82,6 +91,9 @@ nonisolated struct GlobalSettings: Codable, Equatable, Sendable {
     self.automaticallyArchiveMergedWorktrees = automaticallyArchiveMergedWorktrees
     self.promptForWorktreeCreation = promptForWorktreeCreation
     self.fetchOriginBeforeWorktreeCreation = fetchOriginBeforeWorktreeCreation
+    self.copyIgnoredOnWorktreeCreate = copyIgnoredOnWorktreeCreate
+    self.copyUntrackedOnWorktreeCreate = copyUntrackedOnWorktreeCreate
+    self.pullRequestMergeStrategy = pullRequestMergeStrategy
     self.terminalThemeSyncEnabled = terminalThemeSyncEnabled
     self.defaultWorktreeBaseDirectoryPath = defaultWorktreeBaseDirectoryPath
     self.shortcutOverrides = shortcutOverrides
@@ -134,6 +146,15 @@ nonisolated struct GlobalSettings: Codable, Equatable, Sendable {
     fetchOriginBeforeWorktreeCreation =
       try container.decodeIfPresent(Bool.self, forKey: .fetchOriginBeforeWorktreeCreation)
       ?? Self.default.fetchOriginBeforeWorktreeCreation
+    copyIgnoredOnWorktreeCreate =
+      try container.decodeIfPresent(Bool.self, forKey: .copyIgnoredOnWorktreeCreate)
+      ?? Self.default.copyIgnoredOnWorktreeCreate
+    copyUntrackedOnWorktreeCreate =
+      try container.decodeIfPresent(Bool.self, forKey: .copyUntrackedOnWorktreeCreate)
+      ?? Self.default.copyUntrackedOnWorktreeCreate
+    pullRequestMergeStrategy =
+      try container.decodeIfPresent(PullRequestMergeStrategy.self, forKey: .pullRequestMergeStrategy)
+      ?? Self.default.pullRequestMergeStrategy
     terminalThemeSyncEnabled =
       try container.decodeIfPresent(Bool.self, forKey: .terminalThemeSyncEnabled)
       ?? Self.default.terminalThemeSyncEnabled

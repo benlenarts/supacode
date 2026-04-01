@@ -37,12 +37,22 @@ struct RepositorySettingsView: View {
         }
       }
       Section {
-        Toggle(isOn: settings.copyIgnoredOnWorktreeCreate) {
+        Picker(selection: settings.copyIgnoredOnWorktreeCreate) {
+          Text("Global \(Text(store.globalCopyIgnoredOnWorktreeCreate ? "Yes" : "No").foregroundStyle(.secondary))")
+            .tag(Bool?.none)
+          Text("Yes").tag(Bool?.some(true))
+          Text("No").tag(Bool?.some(false))
+        } label: {
           Text("Copy ignored files to new worktrees")
           Text("Copies gitignored files from the main worktree.")
         }
         .disabled(store.isBareRepository)
-        Toggle(isOn: settings.copyUntrackedOnWorktreeCreate) {
+        Picker(selection: settings.copyUntrackedOnWorktreeCreate) {
+          Text("Global \(Text(store.globalCopyUntrackedOnWorktreeCreate ? "Yes" : "No").foregroundStyle(.secondary))")
+            .tag(Bool?.none)
+          Text("Yes").tag(Bool?.some(true))
+          Text("No").tag(Bool?.some(false))
+        } label: {
           Text("Copy untracked files to new worktrees")
           Text("Copies untracked files from the main worktree.")
         }
@@ -54,7 +64,13 @@ struct RepositorySettingsView: View {
         }
         TextField(
           text: worktreeBaseDirectoryPath,
-          prompt: Text(SupacodePaths.reposDirectory.path(percentEncoded: false))
+          prompt: Text(
+            SupacodePaths.worktreeBaseDirectory(
+              for: store.rootURL,
+              globalDefaultPath: store.globalDefaultWorktreeBaseDirectoryPath,
+              repositoryOverridePath: nil
+            ).path(percentEncoded: false)
+          )
         ) {
           Text("Default directory").monospaced(false)
           Text("Parent path for new worktrees.").monospaced(false)
@@ -66,9 +82,11 @@ struct RepositorySettingsView: View {
       }
       Section("Pull Requests") {
         Picker(selection: settings.pullRequestMergeStrategy) {
+          Text("Global \(Text(store.globalPullRequestMergeStrategy.title).foregroundStyle(.secondary))")
+            .tag(PullRequestMergeStrategy?.none)
           ForEach(PullRequestMergeStrategy.allCases) { strategy in
             Text(strategy.title)
-              .tag(strategy)
+              .tag(PullRequestMergeStrategy?.some(strategy))
           }
         } label: {
           Text("Merge strategy")
