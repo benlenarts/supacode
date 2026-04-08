@@ -304,8 +304,7 @@ private struct SidebarPathGroupHeaderRow: View {
       .contentShape(.interaction, .rect)
     }
     .buttonStyle(.plain)
-    .listRowInsets(.leading, CGFloat(depth) * SidebarNestLayout.indentStep)
-    .listRowInsets(.vertical, 6)
+    .modifier(PathGroupListRowInsetsModifier(depth: depth))
     .moveDisabled(true)
     .help(isCollapsed ? "Expand \(label)" : "Collapse \(label)")
     .accessibilityLabel("\(label) group, \(isCollapsed ? "collapsed" : "expanded")")
@@ -534,19 +533,7 @@ private struct SidebarItemBody: View {
     .disabled(isRepositoryRemoving && store.lifecycle != .idle)
     .contentShape(.dragPreview, .rect)
     .contentShape(.interaction, .rect)
-    .onDragSessionUpdated { session in
-      let draggedIDs = Set(session.draggedItemIDs(for: Worktree.ID.self))
-      let active: Bool
-      switch session.phase {
-      case .ended, .dataTransferCompleted:
-        active = false
-      default:
-        active = draggedIDs.contains(rowID)
-      }
-      if active != store.isDragging {
-        store.send(.dragSessionChanged(isDragging: active))
-      }
-    }
+    .modifier(DragSessionUpdatedModifier(rowID: rowID, store: store))
   }
 }
 
@@ -768,6 +755,46 @@ private struct SidebarItemContextMenu: View {
       } else {
         store.send(.pinWorktree(worktreeID))
       }
+    }
+  }
+}
+
+private struct PathGroupListRowInsetsModifier: ViewModifier {
+  let depth: Int
+
+  func body(content: Content) -> some View {
+    if #available(macOS 26.0, *) {
+      content
+        .listRowInsets(.leading, CGFloat(depth) * SidebarNestLayout.indentStep)
+        .listRowInsets(.vertical, 6)
+    } else {
+      content
+    }
+  }
+}
+
+private struct DragSessionUpdatedModifier: ViewModifier {
+  let rowID: Worktree.ID
+  let store: StoreOf<SidebarItemFeature>
+
+  func body(content: Content) -> some View {
+    if #available(macOS 26.0, *) {
+      content
+        .onDragSessionUpdated { session in
+          let draggedIDs = Set(session.draggedItemIDs(for: Worktree.ID.self))
+          let active: Bool
+          switch session.phase {
+          case .ended, .dataTransferCompleted:
+            active = false
+          default:
+            active = draggedIDs.contains(rowID)
+          }
+          if active != store.isDragging {
+            store.send(.dragSessionChanged(isDragging: active))
+          }
+        }
+    } else {
+      content
     }
   }
 }

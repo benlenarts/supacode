@@ -431,7 +431,7 @@ struct WorktreeDetailView: View {
       }
       .sharedBackgroundVisibility(.hidden)
 
-      ToolbarSpacer(.flexible)
+      flexibleSpacer
 
       ToolbarItemGroup {
         ToolbarStatusView(
@@ -449,7 +449,7 @@ struct WorktreeDetailView: View {
         }
       }
 
-      ToolbarSpacer(.flexible)
+      flexibleSpacer
 
       ToolbarItem {
         openMenu(
@@ -457,7 +457,7 @@ struct WorktreeDetailView: View {
           showExtras: toolbarState.showExtras
         )
       }
-      ToolbarSpacer(.fixed)
+      fixedSpacer
 
       ToolbarItem {
         ScriptMenu(
@@ -472,6 +472,29 @@ struct WorktreeDetailView: View {
         // Rebuild the NSMenu when any field changes (#280) so renames propagate without a worktree switch.
         .id(toolbarState.scriptMenuIdentity)
         .transaction { $0.animation = nil }
+      }
+    }
+
+    @ToolbarContentBuilder
+    private var flexibleSpacer: some ToolbarContent {
+      if #available(macOS 26.0, *) {
+        ToolbarSpacer(.flexible)
+      } else {
+        ToolbarItem {
+          Spacer()
+        }
+      }
+    }
+
+    @ToolbarContentBuilder
+    private var fixedSpacer: some ToolbarContent {
+      if #available(macOS 26.0, *) {
+        ToolbarSpacer(.fixed)
+      } else {
+        ToolbarItem {
+          Spacer()
+            .frame(width: 8)
+        }
       }
     }
 

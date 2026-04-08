@@ -72,9 +72,22 @@ struct SidebarItemView: View {
       )
     }
     .labelStyle(.verticallyCentered)
-    .listRowInsets(.leading, CGFloat(nestDepth) * SidebarNestLayout.indentStep)
-    .listRowInsets(.trailing, 4)
-    .listRowInsets(.vertical, 6)
+    .modifier(ListRowInsetsModifier(nestDepth: nestDepth))
+  }
+}
+
+private struct ListRowInsetsModifier: ViewModifier {
+  let nestDepth: Int
+
+  func body(content: Content) -> some View {
+    if #available(macOS 26.0, *) {
+      content
+        .listRowInsets(.leading, CGFloat(nestDepth) * SidebarNestLayout.indentStep)
+        .listRowInsets(.trailing, 4)
+        .listRowInsets(.vertical, 6)
+    } else {
+      content
+    }
   }
 }
 
