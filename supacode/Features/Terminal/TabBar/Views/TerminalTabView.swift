@@ -70,6 +70,7 @@ struct TerminalTabView: View {
     .zIndex(isActive ? 2 : (isDragging ? 3 : 0))
     .overlay {
       MiddleClickView(action: onClose)
+        .allowsHitTesting(false)
     }
   }
 
@@ -98,29 +99,31 @@ private struct MiddleClickView: NSViewRepresentable {
 
 private final class MiddleClickNSView: NSView {
   var action: () -> Void
+  private nonisolated(unsafe) var eventMonitor: Any?
 
   init(action: @escaping () -> Void) {
     self.action = action
     super.init(frame: .zero)
+    eventMonitor = NSEvent.addLocalMonitorForEvents(matching: [.otherMouseUp]) { [weak self] event in
+      self?.handleOtherMouseUp(event) ?? event
+    }
   }
 
   @available(*, unavailable)
   required init?(coder: NSCoder) { fatalError() }
 
-  override func hitTest(_ point: NSPoint) -> NSView? {
-    guard let event = NSApp.currentEvent,
-      event.type == .otherMouseDown || event.type == .otherMouseUp
-    else { return nil }
-    return super.hitTest(point)
-  }
-
-  override func otherMouseUp(with event: NSEvent) {
-    if event.buttonNumber == 2 {
-      action()
-    } else {
-      super.otherMouseUp(with: event)
+  deinit {
+    if let eventMonitor {
+      NSEvent.removeMonitor(eventMonitor)
     }
   }
 
-  override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+  private func handleOtherMouseUp(_ event: NSEvent) -> NSEvent? {
+    guard event.buttonNumber == 2 else { return event }
+    guard window != nil else { return event }
+    let locationInView = convert(event.locationInWindow, from: nil)
+    guard bounds.contains(locationInView) else { return event }
+    action()
+    return event
+  }
 }

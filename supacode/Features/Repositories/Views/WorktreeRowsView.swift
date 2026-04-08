@@ -194,24 +194,7 @@ private struct WorktreeRowContainer: View {
     .disabled(!row.isRemovable && isRepositoryRemoving)
     .contentShape(.dragPreview, .rect)
     .contentShape(.interaction, .rect)
-    .onDragSessionUpdated { session in
-      let draggedIDs = Set(session.draggedItemIDs(for: Worktree.ID.self))
-      if case .ended = session.phase {
-        if !draggingWorktreeIDs.isEmpty {
-          draggingWorktreeIDs = []
-        }
-        return
-      }
-      if case .dataTransferCompleted = session.phase {
-        if !draggingWorktreeIDs.isEmpty {
-          draggingWorktreeIDs = []
-        }
-        return
-      }
-      if draggedIDs != draggingWorktreeIDs {
-        draggingWorktreeIDs = draggedIDs
-      }
-    }
+    .modifier(DragSessionUpdatedModifier(draggingWorktreeIDs: $draggingWorktreeIDs))
   }
 
 }
@@ -318,6 +301,37 @@ private struct WorktreeContextMenu: View {
       } else {
         store.send(.pinWorktree(worktreeID))
       }
+    }
+  }
+}
+
+private struct DragSessionUpdatedModifier: ViewModifier {
+  @Binding var draggingWorktreeIDs: Set<Worktree.ID>
+
+  func body(content: Content) -> some View {
+    if #available(macOS 26.0, *) {
+      content
+        .onDragSessionUpdated { session in
+          let draggedIDs = Set(session.draggedItemIDs(for: Worktree.ID.self))
+          if case .ended = session.phase {
+            if !draggingWorktreeIDs.isEmpty {
+              draggingWorktreeIDs = []
+            }
+            return
+          }
+          if case .dataTransferCompleted = session.phase {
+            if !draggingWorktreeIDs.isEmpty {
+              draggingWorktreeIDs = []
+            }
+            return
+          }
+          if draggedIDs != draggingWorktreeIDs {
+            draggingWorktreeIDs = draggedIDs
+          }
+        }
+    } else {
+      // No backport: purely cosmetic — hides PR info on dragged rows
+      content
     }
   }
 }

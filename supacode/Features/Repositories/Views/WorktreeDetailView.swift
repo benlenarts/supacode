@@ -317,7 +317,7 @@ struct WorktreeDetailView: View {
         )
       }
 
-      ToolbarSpacer(.flexible)
+      flexibleSpacer
 
       ToolbarItemGroup {
         ToolbarStatusView(
@@ -328,7 +328,7 @@ struct WorktreeDetailView: View {
       }
 
       if !toolbarState.notificationGroups.isEmpty {
-        ToolbarSpacer(.fixed)
+        fixedSpacer
         ToolbarItemGroup {
           ToolbarNotificationsPopoverButton(
             groups: toolbarState.notificationGroups,
@@ -339,7 +339,7 @@ struct WorktreeDetailView: View {
         }
       }
 
-      ToolbarSpacer(.flexible)
+      flexibleSpacer
 
       ToolbarItemGroup {
         openMenu(
@@ -347,7 +347,7 @@ struct WorktreeDetailView: View {
           showExtras: toolbarState.showExtras
         )
       }
-      ToolbarSpacer(.fixed)
+      fixedSpacer
 
       if toolbarState.runScriptIsRunning || toolbarState.runScriptEnabled {
         ToolbarItem {
@@ -364,6 +364,29 @@ struct WorktreeDetailView: View {
         }
       }
 
+    }
+
+    @ToolbarContentBuilder
+    private var flexibleSpacer: some ToolbarContent {
+      if #available(macOS 26.0, *) {
+        ToolbarSpacer(.flexible)
+      } else {
+        ToolbarItem {
+          Spacer()
+        }
+      }
+    }
+
+    @ToolbarContentBuilder
+    private var fixedSpacer: some ToolbarContent {
+      if #available(macOS 26.0, *) {
+        ToolbarSpacer(.fixed)
+      } else {
+        ToolbarItem {
+          Spacer()
+            .frame(width: 8)
+        }
+      }
     }
 
     @ViewBuilder

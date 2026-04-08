@@ -194,8 +194,7 @@ struct WorktreeRow: View {
       )
     }
     .labelStyle(.verticallyCentered)
-    .listRowInsets(.trailing, 4)
-    .listRowInsets(.vertical, 6)
+    .modifier(ListRowInsetsModifier())
   }
 }
 
@@ -445,6 +444,18 @@ private struct PingDot<S: ShapeStyle>: View {
 // MARK: - Focus notification environment.
 
 private nonisolated let notificationEnvironmentLogger = SupaLogger("Notifications")
+
+private struct ListRowInsetsModifier: ViewModifier {
+  func body(content: Content) -> some View {
+    if #available(macOS 26.0, *) {
+      content
+        .listRowInsets(.trailing, 4)
+        .listRowInsets(.vertical, 6)
+    } else {
+      content
+    }
+  }
+}
 
 extension EnvironmentValues {
   @Entry var focusNotificationAction: (WorktreeTerminalNotification) -> Void = { _ in
