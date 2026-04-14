@@ -54,17 +54,32 @@ jobs:
         with:
           submodules: recursive
       - uses: ./.github/actions/setup-macos
-      - name: Override build number for tip
+      - name: Prepare tip overrides
+        env:
+          SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+          POSTHOG_API_KEY: ${{ secrets.POSTHOG_API_KEY }}
+          POSTHOG_HOST: ${{ secrets.POSTHOG_HOST }}
         run: |
-          BASE=$(awk -F' = ' '/CURRENT_PROJECT_VERSION = [0-9]+/{gsub(/;/,""); print $2; exit}' supacode.xcodeproj/project.pbxproj)
+          set -euo pipefail
+          : "${SENTRY_DSN:?secret SENTRY_DSN is not set}"
+          : "${POSTHOG_API_KEY:?secret POSTHOG_API_KEY is not set}"
+          : "${POSTHOG_HOST:?secret POSTHOG_HOST is not set}"
+          BASE=$(awk -F' = ' '/^CURRENT_PROJECT_VERSION = [0-9]+$/{print $2; exit}' Configurations/Project.xcconfig)
           OFFSET=${{ github.run_number }}
           if [ "$OFFSET" -gt 999 ]; then
             echo "::error::Tip run_number ($OFFSET) exceeds 999. Bump CURRENT_PROJECT_VERSION before the next tip release."
             exit 1
           fi
           BUILD_NUMBER=$((BASE * 1000 + OFFSET))
-          sed -i '' "s/CURRENT_PROJECT_VERSION = [0-9]*/CURRENT_PROJECT_VERSION = $BUILD_NUMBER/g" supacode.xcodeproj/project.pbxproj
+          mkdir -p build
+          cat > build/ReleaseOverrides.xcconfig <<EOF
+          CURRENT_PROJECT_VERSION = $BUILD_NUMBER
+          SENTRY_DSN = $SENTRY_DSN
+          POSTHOG_API_KEY = $POSTHOG_API_KEY
+          POSTHOG_HOST = $POSTHOG_HOST
+          EOF
           echo "BUILD_NUMBER=$BUILD_NUMBER" >> "$GITHUB_ENV"
+          echo "XCODE_XCCONFIG_FILE=$PWD/build/ReleaseOverrides.xcconfig" >> "$GITHUB_ENV"
       - name: Setup keychain
         run: |
           echo "$DEVELOPER_ID_CERT_P12" | base64 --decode > build-cert.p12
@@ -81,20 +96,7 @@ jobs:
             exit 1
           fi
           echo "DEVELOPER_ID_IDENTITY_SHA=$DEVELOPER_ID_IDENTITY_SHA" >> "$GITHUB_ENV"
-      - name: Inject secrets
-        env:
-          SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
-          POSTHOG_API_KEY: ${{ secrets.POSTHOG_API_KEY }}
-          POSTHOG_HOST: ${{ secrets.POSTHOG_HOST }}
-        run: |
-          set -euo pipefail
-          : "${SENTRY_DSN:?secret SENTRY_DSN is not set}"
-          : "${POSTHOG_API_KEY:?secret POSTHOG_API_KEY is not set}"
-          : "${POSTHOG_HOST:?secret POSTHOG_HOST is not set}"
-          sed -i '' "s|__SENTRY_DSN__|${SENTRY_DSN}|g" supacode/App/supacodeApp.swift
-          sed -i '' "s|__POSTHOG_API_KEY__|${POSTHOG_API_KEY}|g" supacode/App/supacodeApp.swift
-          sed -i '' "s|__POSTHOG_HOST__|${POSTHOG_HOST}|g" supacode/App/supacodeApp.swift
-      - name: Archive Xcode project
+      - name: Archive workspace
         run: make archive
       - name: Upload dSYMs
         uses: actions/upload-artifact@v6

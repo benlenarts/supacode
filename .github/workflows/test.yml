@@ -20,6 +20,7 @@ jobs:
         with:
           submodules: recursive
       - uses: ./.github/actions/setup-macos
+      - run: make inspect-dependencies
       - run: make lint
       - run: make build-app
       - run: make test

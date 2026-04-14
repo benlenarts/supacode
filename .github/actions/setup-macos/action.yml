@@ -1,5 +1,5 @@
 name: Setup macOS build deps
-description: Install + cache mise tools and GhosttyKit build outputs
+description: Install + cache mise tools and Ghostty build outputs
 
 runs:
   using: composite
@@ -28,10 +28,7 @@ runs:
       id: ghostty_cache
       uses: actions/cache@v4
       with:
-        path: |
-          Frameworks/GhosttyKit.xcframework
-          Resources/ghostty
-          Resources/terminfo
+        path: .build/ghostty
         key: ${{ runner.os }}-${{ runner.arch }}-ghostty-${{ env.GHOSTTY_SHA }}
     - name: Build ghostty
       if: steps.ghostty_cache.outputs.cache-hit != 'true'
@@ -39,14 +36,6 @@ runs:
       run: |
         set -euo pipefail
         make build-ghostty-xcframework
-
-    - name: SPM cache
-      uses: actions/cache@v4
-      with:
-        path: /tmp/supacode-spm-cache/SourcePackages
-        key: ${{ runner.os }}-${{ runner.arch }}-spm-v0-${{ hashFiles('**/Package.resolved') }}
-        restore-keys: |
-          ${{ runner.os }}-${{ runner.arch }}-spm-v0-
 
     - name: Xcode compilation cache
       uses: actions/cache@v4
