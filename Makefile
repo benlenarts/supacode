@@ -83,7 +83,7 @@ inspect-dependencies: $(TUIST_INSTALL_STAMP) # Check for implicit Tuist dependen
 	mise exec -- tuist inspect dependencies --only implicit
 
 warm-cache: $(TUIST_INSTALL_STAMP) # Warm the full Tuist cacheable graph
-	PATH="$(CURRENT_MAKEFILE_DIR)/scripts/shims:$$PATH" mise exec -- tuist cache warm --configuration $(TUIST_CACHE_CONFIGURATION)
+	mise exec -- tuist cache warm --configuration $(TUIST_CACHE_CONFIGURATION)
 
 build-app: $(TUIST_DEVELOPMENT_GENERATION_STAMP) # Build the macOS app (Debug)
 	bash -o pipefail -c 'xcodebuild -workspace "$(PROJECT_WORKSPACE)" -scheme "$(APP_SCHEME)" -configuration Debug build -skipMacroValidation 2>&1 $(FORMATTER)'
