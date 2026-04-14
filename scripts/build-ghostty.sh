@@ -11,6 +11,8 @@ ghostty_build_root="${srcroot}/.build/ghostty"
 ghostty_local_cache_dir="${ghostty_build_root}/.zig-cache"
 ghostty_global_cache_dir="${ghostty_build_root}/.zig-global-cache"
 ghostty_fingerprint_path="${ghostty_build_root}/fingerprint"
+ghostty_legacy_prefix_path="${ghostty_dir}/zig-out"
+ghostty_legacy_share_path="${ghostty_legacy_prefix_path}/share"
 xcframework_path="${ghostty_build_root}/GhosttyKit.xcframework"
 ghostty_resources_path="${ghostty_build_root}/share/ghostty"
 ghostty_terminfo_path="${ghostty_build_root}/share/terminfo"
@@ -63,6 +65,10 @@ fi
 
 fingerprint="$(print_fingerprint)"
 
+rm -rf "${ghostty_legacy_prefix_path}"
+mkdir -p "${ghostty_build_root}" "${ghostty_legacy_prefix_path}"
+ln -s "${ghostty_build_root}/share" "${ghostty_legacy_share_path}"
+
 if [ -f "${ghostty_fingerprint_path}" ] &&
   [ -d "${xcframework_path}" ] &&
   [ -d "${ghostty_resources_path}" ] &&
@@ -70,9 +76,6 @@ if [ -f "${ghostty_fingerprint_path}" ] &&
   [ "$(cat "${ghostty_fingerprint_path}")" = "${fingerprint}" ]; then
   exit 0
 fi
-
-rm -rf "${ghostty_build_root}"
-mkdir -p "${ghostty_build_root}"
 
 cd "${ghostty_dir}"
 mise exec -- zig build -Doptimize=ReleaseFast -Demit-xcframework=true -Dsentry=false --prefix "${ghostty_build_root}" --cache-dir "${ghostty_local_cache_dir}" --global-cache-dir "${ghostty_global_cache_dir}"
