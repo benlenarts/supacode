@@ -107,8 +107,6 @@ let project = Project(
       "CLANG_ENABLE_MODULES": "YES",
       "CODE_SIGN_STYLE": "Automatic",
       "ENABLE_USER_SCRIPT_SANDBOXING": "NO",
-      "FRAMEWORK_SEARCH_PATHS": "$(inherited) $(BUILT_PRODUCTS_DIR)/PackageFrameworks",
-      "LIBRARY_SEARCH_PATHS": "$(inherited) $(BUILT_PRODUCTS_DIR)/PackageFrameworks",
       "SWIFT_APPROACHABLE_CONCURRENCY": "YES",
       "SWIFT_DEFAULT_ACTOR_ISOLATION": "MainActor",
       "SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY": "YES",
