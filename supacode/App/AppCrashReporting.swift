@@ -1,5 +1,6 @@
 import Foundation
 import Sentry
+import SupacodeSettingsShared
 
 enum AppCrashReporting {
   struct Configuration: Equatable {

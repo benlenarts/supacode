@@ -10,6 +10,8 @@ import ComposableArchitecture
 import Foundation
 import GhosttyKit
 import Sharing
+import SupacodeSettingsFeature
+import SupacodeSettingsShared
 import SwiftUI
 
 private enum GhosttyCLI {

@@ -1,5 +1,6 @@
 import Foundation
 import PostHog
+import SupacodeSettingsShared
 
 enum AppTelemetry {
   struct Configuration: Equatable {

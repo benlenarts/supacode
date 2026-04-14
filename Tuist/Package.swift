@@ -6,13 +6,32 @@ import ProjectDescription
 
 let packageSettings = PackageSettings(
   productTypes: [
-    "ComposableArchitecture": .staticFramework,
-    "Dependencies": .staticFramework,
+    "CasePaths": .framework,
+    "CasePathsCore": .framework,
+    "Clocks": .framework,
+    "CombineSchedulers": .framework,
+    "ComposableArchitecture": .framework,
+    "ConcurrencyExtras": .framework,
+    "CustomDump": .framework,
+    "Dependencies": .framework,
+    "DependenciesTestSupport": .framework,
+    "IdentifiedCollections": .framework,
+    "InternalCollectionsUtilities": .framework,
+    "IssueReporting": .framework,
+    "IssueReportingPackageSupport": .framework,
+    "IssueReportingTestSupport": .framework,
     "Kingfisher": .framework,
+    "OrderedCollections": .framework,
+    "Perception": .framework,
+    "PerceptionCore": .framework,
     "PostHog": .framework,
     "Sentry": .framework,
-    "Sharing": .staticFramework,
+    "Sharing": .framework,
     "Sparkle": .framework,
+    "SwiftNavigation": .framework,
+    "SwiftUINavigation": .framework,
+    "UIKitNavigation": .framework,
+    "XCTestDynamicOverlay": .framework,
   ]
 )
 #endif

@@ -2,6 +2,7 @@ import ConcurrencyExtras
 import Foundation
 import Testing
 
+@testable import SupacodeSettingsShared
 @testable import supacode
 
 struct AgentHookSettingsFileInstallerTests {
@@ -35,10 +36,10 @@ struct AgentHookSettingsFileInstallerTests {
               "type": "command",
               "command": .string(AgentHookSettingsCommand.busyCommand(active: false)),
               "timeout": 10,
-            ]),
-          ]),
-        ]),
-      ],
+            ])
+          ])
+        ])
+      ]
     ]
   }
 
@@ -112,11 +113,11 @@ struct AgentHookSettingsFileInstallerTests {
               .object([
                 "type": "command",
                 "command": "SUPACODE_CLI_PATH agent-hook --stop",
-              ]),
-            ]),
-          ]),
-        ]),
-      ]),
+              ])
+            ])
+          ])
+        ])
+      ])
     ])
     try fileManager.createDirectory(
       at: url.deletingLastPathComponent(),
@@ -162,8 +163,8 @@ struct AgentHookSettingsFileInstallerTests {
           .object([
             "type": "command",
             "command": "echo third-party",
-          ]),
-        ]),
+          ])
+        ])
       ]))
     hooks["Stop"] = .array(stopGroups)
     root["hooks"] = .object(hooks)

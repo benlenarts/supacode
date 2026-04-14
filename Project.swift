@@ -33,20 +33,37 @@ let appBuildableFolders: [BuildableFolder] = [
 ]
 
 let appDependencies: [TargetDependency] = [
+  .target(name: "SupacodeSettingsShared"),
+  .target(name: "SupacodeSettingsFeature"),
   .target(name: "GhosttyKit"),
   .target(name: "supacode-cli"),
   .external(name: "CasePaths"),
+  .external(name: "CasePathsCore"),
+  .external(name: "Clocks"),
+  .external(name: "CombineSchedulers"),
   .external(name: "ComposableArchitecture"),
+  .external(name: "ConcurrencyExtras"),
+  .external(name: "CustomDump"),
   .external(name: "Dependencies"),
+  .external(name: "IdentifiedCollections"),
+  .external(name: "IssueReporting"),
   .external(name: "Kingfisher"),
+  .external(name: "OrderedCollections"),
+  .external(name: "Perception"),
   .external(name: "PostHog"),
   .external(name: "Sentry"),
   .external(name: "Sharing"),
   .external(name: "Sparkle"),
+  .external(name: "SwiftNavigation"),
+  .external(name: "SwiftUINavigation"),
+  .external(name: "UIKitNavigation"),
+  .external(name: "XCTestDynamicOverlay"),
 ]
 
 let testDependencies: [TargetDependency] = [
   .target(name: "GhosttyKit"),
+  .target(name: "SupacodeSettingsShared"),
+  .target(name: "SupacodeSettingsFeature"),
   .target(name: "supacode"),
   .external(name: "Clocks"),
   .external(name: "ComposableArchitecture"),
@@ -90,6 +107,8 @@ let project = Project(
       "CLANG_ENABLE_MODULES": "YES",
       "CODE_SIGN_STYLE": "Automatic",
       "ENABLE_USER_SCRIPT_SANDBOXING": "NO",
+      "FRAMEWORK_SEARCH_PATHS": "$(inherited) $(BUILT_PRODUCTS_DIR)/PackageFrameworks",
+      "LIBRARY_SEARCH_PATHS": "$(inherited) $(BUILT_PRODUCTS_DIR)/PackageFrameworks",
       "SWIFT_APPROACHABLE_CONCURRENCY": "YES",
       "SWIFT_DEFAULT_ACTOR_ISOLATION": "MainActor",
       "SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY": "YES",
@@ -139,6 +158,52 @@ let project = Project(
         .script(ghosttyFingerprintInputScript),
       ],
       output: .xcframework(path: ghosttyXCFrameworkPath, linking: .static)
+    ),
+    .target(
+      name: "SupacodeSettingsShared",
+      destinations: .macOS,
+      product: .staticFramework,
+      bundleId: "app.supabit.supacode.settings-shared",
+      deploymentTargets: .macOS("26.0"),
+      infoPlist: .default,
+      buildableFolders: [
+        "SupacodeSettingsShared",
+      ],
+      dependencies: [
+        .external(name: "ComposableArchitecture"),
+        .external(name: "Dependencies"),
+        .external(name: "PostHog"),
+        .external(name: "Sharing"),
+      ],
+      settings: .settings(
+        base: [
+          "SWIFT_DEFAULT_ACTOR_ISOLATION": "MainActor",
+        ],
+        defaultSettings: .essential
+      )
+    ),
+    .target(
+      name: "SupacodeSettingsFeature",
+      destinations: .macOS,
+      product: .staticFramework,
+      bundleId: "app.supabit.supacode.settings-feature",
+      deploymentTargets: .macOS("26.0"),
+      infoPlist: .default,
+      buildableFolders: [
+        "SupacodeSettingsFeature",
+      ],
+      dependencies: [
+        .target(name: "SupacodeSettingsShared"),
+        .external(name: "ComposableArchitecture"),
+        .external(name: "Dependencies"),
+        .external(name: "Sharing"),
+      ],
+      settings: .settings(
+        base: [
+          "SWIFT_DEFAULT_ACTOR_ISOLATION": "MainActor",
+        ],
+        defaultSettings: .essential
+      )
     ),
     .target(
       name: "supacode",
