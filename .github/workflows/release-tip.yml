@@ -161,15 +161,38 @@ jobs:
           fi
       - name: Notarize and staple
         run: |
+          set -euo pipefail
           APP_PATH="$(find build/export -name "supacode.app" -maxdepth 3 -print -quit)"
-
+          NOTARY_RESULT_PATH=build/notarytool-submit.json
+          NOTARY_LOG_PATH=build/notarytool-log.json
+          NOTARY_STATUS=""
+          NOTARY_ID=""
           for attempt in 1 2 3; do
             echo "Notarization attempt $attempt..."
-            xcrun notarytool submit build/supacode.dmg --keychain-profile "notarytool-profile" --wait && break
+            submit_exit=0
+            if ! xcrun notarytool submit build/supacode.dmg \
+              --keychain-profile "notarytool-profile" \
+              --wait \
+              --output-format json > "$NOTARY_RESULT_PATH"; then
+              submit_exit=$?
+            fi
+            NOTARY_STATUS="$(jq -r '.status // empty' "$NOTARY_RESULT_PATH" 2>/dev/null || true)"
+            NOTARY_ID="$(jq -r '.id // empty' "$NOTARY_RESULT_PATH" 2>/dev/null || true)"
+            cat "$NOTARY_RESULT_PATH" || true
+            if [ "$submit_exit" -eq 0 ] && [ "$NOTARY_STATUS" = "Accepted" ]; then
+              break
+            fi
+            if [ -n "$NOTARY_ID" ]; then
+              xcrun notarytool log "$NOTARY_ID" --keychain-profile "notarytool-profile" > "$NOTARY_LOG_PATH" || true
+              cat "$NOTARY_LOG_PATH" || true
+            fi
             echo "Attempt $attempt failed, retrying in 30s..."
             sleep 30
           done
-
+          if [ "$NOTARY_STATUS" != "Accepted" ]; then
+            echo "::error::Notarization failed with status '$NOTARY_STATUS'"
+            exit 1
+          fi
           xcrun stapler staple build/supacode.dmg
           xcrun stapler staple "$APP_PATH"
       - name: Create app zip for Sparkle
