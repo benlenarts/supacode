@@ -1,6 +1,5 @@
 import ProjectDescription
 
-let ghosttyBuildRootPath: Path = ".build/ghostty"
 let ghosttyXCFrameworkPath: Path = ".build/ghostty/GhosttyKit.xcframework"
 let ghosttyResourcesPath: Path = ".build/ghostty/share/ghostty"
 let ghosttyTerminfoPath: Path = ".build/ghostty/share/terminfo"
