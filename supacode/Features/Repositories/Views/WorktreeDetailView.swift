@@ -567,7 +567,11 @@ private struct ToolbarPlaceholderContent: ToolbarContent {
       .shimmer(isActive: true)
     }
 
-    ToolbarSpacer(.flexible)
+    if #available(macOS 26.0, *) {
+      ToolbarSpacer(.flexible)
+    } else {
+      ToolbarItem { Spacer() }
+    }
 
     ToolbarItemGroup {
       HStack(spacing: 8) {
@@ -583,7 +587,11 @@ private struct ToolbarPlaceholderContent: ToolbarContent {
       .shimmer(isActive: true)
     }
 
-    ToolbarSpacer(.flexible)
+    if #available(macOS 26.0, *) {
+      ToolbarSpacer(.flexible)
+    } else {
+      ToolbarItem { Spacer() }
+    }
 
     ToolbarItemGroup {
       Button {
@@ -597,7 +605,11 @@ private struct ToolbarPlaceholderContent: ToolbarContent {
       .redacted(reason: .placeholder)
       .shimmer(isActive: true)
     }
-    ToolbarSpacer(.fixed)
+    if #available(macOS 26.0, *) {
+      ToolbarSpacer(.fixed)
+    } else {
+      ToolbarItem { Spacer().frame(width: 8) }
+    }
 
     ToolbarItem {
       Button {
