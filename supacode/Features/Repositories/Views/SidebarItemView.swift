@@ -1,194 +1,51 @@
+import ComposableArchitecture
 import SupacodeSettingsShared
 import SwiftUI
 
 struct SidebarItemView: View {
-  let kind: SidebarItemModel.Kind
-  let name: String
-  let subtitle: String?
-  let accent: WorktreeAccent
-  let isBusy: Bool
-  let gitIconName: String
-  let gitIconColor: AnyShapeStyle
-  let isArchiving: Bool
-  let isDeleting: Bool
-  let isPending: Bool
-  let info: WorktreeInfoEntry?
-  let pullRequestBadgeText: String?
+  let store: StoreOf<SidebarItemFeature>
+  let displayMode: WorktreeRowDisplayMode
+  let hideSubtitle: Bool
+  let hideSubtitleOnMatch: Bool
   let showsPullRequestInfo: Bool
-  let runningScriptColors: [RepositoryColor]
-  let runningAgents: [AgentPresenceManager.AgentInstance]
-  let showsNotificationIndicator: Bool
-  let notifications: [WorktreeTerminalNotification]
   let shortcutHint: String?
-  let checkBadgeState: CheckBadgeState?
-
-  enum CheckBadgeState {
-    case passing
-    case failing
-    case inProgress
-
-    var symbolName: String {
-      switch self {
-      case .passing: "checkmark"
-      case .failing: "xmark"
-      case .inProgress: "ellipsis"
-      }
-    }
-
-    var color: Color {
-      switch self {
-      case .passing: .green
-      case .failing: .red
-      case .inProgress: .yellow
-      }
-    }
-
-    var accessibilityLabel: String {
-      switch self {
-      case .passing: "Checks passed"
-      case .failing: "Checks failed"
-      case .inProgress: "Checks in progress"
-      }
-    }
-  }
-
-  init(
-    row: SidebarItemModel,
-    displayMode: WorktreeRowDisplayMode,
-    hideSubtitle: Bool,
-    hideSubtitleOnMatch: Bool,
-    showsPullRequestInfo: Bool,
-    runningScriptColors: [RepositoryColor],
-    runningAgents: [AgentPresenceManager.AgentInstance],
-    isTaskRunning: Bool,
-    showsNotificationIndicator: Bool,
-    notifications: [WorktreeTerminalNotification],
-    shortcutHint: String?
-  ) {
-    self.kind = row.kind
-    self.isArchiving = row.isArchiving
-    self.isDeleting = row.isDeleting
-    self.isPending = row.isPending
-    self.info = row.info
-    self.showsPullRequestInfo = showsPullRequestInfo
-    self.runningScriptColors = runningScriptColors
-    self.runningAgents = runningAgents
-    self.showsNotificationIndicator = showsNotificationIndicator
-    self.notifications = notifications
-    self.shortcutHint = shortcutHint
-    self.isBusy = row.isArchiving || row.isDeleting || row.isPending || isTaskRunning
-
-    self.accent = row.accent
-
-    // Folders have no branch / no PR — show the folder name alone,
-    // ignore display-mode and PR computation entirely.
-    if row.kind == .folder {
-      self.name = row.name
-      self.subtitle = nil
-      self.pullRequestBadgeText = nil
-      self.gitIconName = "folder"
-      self.gitIconColor = AnyShapeStyle(.secondary)
-      self.checkBadgeState = nil
-      return
-    }
-
-    // Title and subtitle based on display mode.
-    let branchName = row.name
-    let worktreeName = row.sidebarDisplayName ?? "Default"
-    let effectiveWorktreeName = worktreeName.isEmpty ? branchName : worktreeName
-    switch displayMode {
-    case .branchFirst:
-      self.name = branchName
-    case .worktreeFirst:
-      self.name = effectiveWorktreeName
-    }
-
-    // Hide subtitle when the worktree name matches the branch name's last path component.
-    let branchLastComponent = branchName.split(separator: "/").last.map(String.init) ?? branchName
-    let isMatch = effectiveWorktreeName == branchLastComponent
-    let rawSubtitle = displayMode == .branchFirst ? effectiveWorktreeName : branchName
-    if hideSubtitle || (hideSubtitleOnMatch && isMatch) {
-      self.subtitle = nil
-    } else {
-      self.subtitle = rawSubtitle
-    }
-
-    // Pull request display.
-    let prDisplay = WorktreePullRequestDisplay(
-      worktreeName: row.name,
-      pullRequest: showsPullRequestInfo ? row.info?.pullRequest : nil
-    )
-    self.pullRequestBadgeText = prDisplay.pullRequestBadgeStyle?.text
-    if let pullRequest = prDisplay.pullRequest {
-      switch pullRequest.state.uppercased() {
-      case "MERGED":
-        self.gitIconName = "git-merge"
-        self.gitIconColor = AnyShapeStyle(.purple)
-      case "CLOSED":
-        self.gitIconName = "git-pull-request-closed"
-        self.gitIconColor = AnyShapeStyle(.red)
-      case "OPEN" where pullRequest.isDraft:
-        self.gitIconName = "git-pull-request-draft"
-        self.gitIconColor = AnyShapeStyle(.tertiary)
-      case "OPEN":
-        self.gitIconName = "git-pull-request"
-        self.gitIconColor = AnyShapeStyle(.green)
-      default:
-        self.gitIconName = "git-branch"
-        self.gitIconColor = AnyShapeStyle(.secondary)
-      }
-    } else {
-      self.gitIconName = "git-branch"
-      self.gitIconColor = AnyShapeStyle(.secondary)
-    }
-
-    // Check badge for PRs with status checks.
-    if let checks = prDisplay.pullRequest?.statusCheckRollup?.checks,
-      !checks.isEmpty
-    {
-      let breakdown = PullRequestCheckBreakdown(checks: checks)
-      if breakdown.failed > 0 {
-        self.checkBadgeState = .failing
-      } else if breakdown.inProgress > 0 || breakdown.expected > 0 {
-        self.checkBadgeState = .inProgress
-      } else {
-        self.checkBadgeState = .passing
-      }
-    } else {
-      self.checkBadgeState = nil
-    }
-  }
 
   var body: some View {
+    let resolved = ResolvedRowDisplay(
+      kind: store.kind,
+      branchName: store.branchName,
+      worktreeName: store.sidebarDisplayName,
+      isMainWorktree: store.isMainWorktree,
+      isPinned: store.isPinned,
+      displayMode: displayMode,
+      hideSubtitle: hideSubtitle,
+      hideSubtitleOnMatch: hideSubtitleOnMatch
+    )
+
     Label {
       HStack(spacing: 8) {
         TitleView(
-          name: name,
-          subtitle: subtitle,
-          accent: accent,
-          isBusy: isBusy
+          name: resolved.name,
+          subtitle: resolved.subtitle,
+          accent: resolved.accent,
+          isLifecycleBusy: store.lifecycle.isBusy,
+          isTaskRunning: store.isTaskRunning
         )
+        .equatable()
         Spacer(minLength: 0)
         TrailingView(
+          store: store,
           shortcutHint: shortcutHint,
-          info: info,
-          showsPullRequestInfo: showsPullRequestInfo,
-          pullRequestBadgeText: pullRequestBadgeText,
-          runningScriptColors: runningScriptColors,
-          runningAgents: runningAgents,
-          showsNotificationIndicator: showsNotificationIndicator,
-          notifications: notifications
+          showsPullRequestInfo: showsPullRequestInfo
         )
       }
     } icon: {
       IconView(
-        kind: kind,
-        isArchiving: isArchiving,
-        isDeleting: isDeleting,
-        isPending: isPending,
-        gitIconName: gitIconName,
-        gitIconColor: gitIconColor,
-        checkBadgeState: checkBadgeState
+        isFolder: store.kind == .folder,
+        branchName: store.branchName,
+        pullRequest: store.pullRequest,
+        showsPullRequestInfo: showsPullRequestInfo,
+        lifecycle: store.lifecycle
       )
     }
     .labelStyle(.verticallyCentered)
@@ -197,16 +54,144 @@ struct SidebarItemView: View {
   }
 }
 
-// MARK: - Title.
-
-private struct TitleView: View {
+struct ResolvedRowDisplay: Equatable {
   let name: String
   let subtitle: String?
   let accent: WorktreeAccent
-  let isBusy: Bool
+
+  init(
+    kind: SidebarItemFeature.State.Kind,
+    branchName: String,
+    worktreeName: String?,
+    isMainWorktree: Bool,
+    isPinned: Bool,
+    displayMode: WorktreeRowDisplayMode,
+    hideSubtitle: Bool,
+    hideSubtitleOnMatch: Bool
+  ) {
+    self.accent =
+      if isMainWorktree { .main } else if isPinned { .pinned } else { .default }
+
+    if kind == .folder {
+      self.name = branchName
+      self.subtitle = nil
+      return
+    }
+
+    let resolvedWorktreeName = worktreeName ?? "Default"
+    let effectiveWorktreeName = resolvedWorktreeName.isEmpty ? branchName : resolvedWorktreeName
+    switch displayMode {
+    case .branchFirst: self.name = branchName
+    case .worktreeFirst: self.name = effectiveWorktreeName
+    }
+
+    let branchLastComponent = branchName.split(separator: "/").last.map(String.init) ?? branchName
+    let isMatch = effectiveWorktreeName == branchLastComponent
+    let rawSubtitle = displayMode == .branchFirst ? effectiveWorktreeName : branchName
+    if hideSubtitle || (hideSubtitleOnMatch && isMatch) {
+      self.subtitle = nil
+    } else {
+      self.subtitle = rawSubtitle
+    }
+  }
+}
+
+enum SidebarCheckBadgeState: Equatable {
+  case passing
+  case failing
+  case inProgress
+
+  var symbolName: String {
+    switch self {
+    case .passing: "checkmark"
+    case .failing: "xmark"
+    case .inProgress: "ellipsis"
+    }
+  }
+
+  var color: Color {
+    switch self {
+    case .passing: .green
+    case .failing: .red
+    case .inProgress: .yellow
+    }
+  }
+
+  var accessibilityLabel: String {
+    switch self {
+    case .passing: "Checks passed"
+    case .failing: "Checks failed"
+    case .inProgress: "Checks in progress"
+    }
+  }
+}
+
+enum SidebarPullRequestIcon: Equatable {
+  case branch
+  case open
+  case draft
+  case merged
+  case closed
+
+  static func resolve(_ pullRequest: GithubPullRequest?) -> Self {
+    guard let pullRequest else { return .branch }
+    switch pullRequest.state.uppercased() {
+    case "MERGED": return .merged
+    case "CLOSED": return .closed
+    case "OPEN" where pullRequest.isDraft: return .draft
+    case "OPEN": return .open
+    default: return .branch
+    }
+  }
+
+  var assetName: String {
+    switch self {
+    case .branch: "git-branch"
+    case .open: "git-pull-request"
+    case .draft: "git-pull-request-draft"
+    case .merged: "git-merge"
+    case .closed: "git-pull-request-closed"
+    }
+  }
+
+  var color: AnyShapeStyle {
+    switch self {
+    case .branch: AnyShapeStyle(.secondary)
+    case .open: AnyShapeStyle(.green)
+    case .draft: AnyShapeStyle(.tertiary)
+    case .merged: AnyShapeStyle(.purple)
+    case .closed: AnyShapeStyle(.red)
+    }
+  }
+}
+
+private func resolveCheckBadgeState(_ pullRequest: GithubPullRequest?) -> SidebarCheckBadgeState? {
+  guard let checks = pullRequest?.statusCheckRollup?.checks, !checks.isEmpty else { return nil }
+  let breakdown = PullRequestCheckBreakdown(checks: checks)
+  if breakdown.failed > 0 { return .failing }
+  if breakdown.inProgress > 0 || breakdown.expected > 0 { return .inProgress }
+  return .passing
+}
+
+private struct TitleView: View, Equatable {
+  let name: String
+  let subtitle: String?
+  let accent: WorktreeAccent
+  let isLifecycleBusy: Bool
+  let isTaskRunning: Bool
+  // `==` ignores @Environment; SwiftUI tracks env changes separately.
   @Environment(\.backgroundProminence) private var backgroundProminence
 
+  static func == (lhs: Self, rhs: Self) -> Bool {
+    lhs.name == rhs.name
+      && lhs.subtitle == rhs.subtitle
+      && lhs.accent == rhs.accent
+      && lhs.isLifecycleBusy == rhs.isLifecycleBusy
+      && lhs.isTaskRunning == rhs.isTaskRunning
+  }
+
   var body: some View {
+    let isBusy = isLifecycleBusy || isTaskRunning
     VStack(alignment: .leading, spacing: 0) {
       Text(name)
         .font(.body)
@@ -222,69 +207,111 @@ private struct TitleView: View {
   }
 }
 
-// MARK: - Icon.
-
 private struct IconView: View {
-  let kind: SidebarItemModel.Kind
-  let isArchiving: Bool
-  let isDeleting: Bool
-  let isPending: Bool
-  let gitIconName: String
-  let gitIconColor: AnyShapeStyle
-  let checkBadgeState: SidebarItemView.CheckBadgeState?
+  let isFolder: Bool
+  let branchName: String
+  let pullRequest: GithubPullRequest?
+  let showsPullRequestInfo: Bool
+  let lifecycle: SidebarItemFeature.State.Lifecycle
+
+  var body: some View {
+    let display = WorktreePullRequestDisplay(
+      worktreeName: branchName,
+      pullRequest: showsPullRequestInfo ? pullRequest : nil,
+    )
+    IconContent(
+      isFolder: isFolder,
+      icon: SidebarPullRequestIcon.resolve(display.pullRequest),
+      checkBadgeState: resolveCheckBadgeState(display.pullRequest),
+      rowState: IconRowState(lifecycle),
+    )
+    .equatable()
+  }
+}
+
+enum IconRowState: Equatable {
+  case idle
+  case pending
+  case archiving
+  case deleting
+
+  init(_ lifecycle: SidebarItemFeature.State.Lifecycle) {
+    switch lifecycle {
+    case .idle: self = .idle
+    case .pending: self = .pending
+    case .archiving: self = .archiving
+    case .deleting, .deletingScript: self = .deleting
+    }
+  }
+}
+
+private struct IconContent: View, Equatable {
+  let isFolder: Bool
+  let icon: SidebarPullRequestIcon
+  let checkBadgeState: SidebarCheckBadgeState?
+  let rowState: IconRowState
+  // `==` ignores @Environment; SwiftUI tracks env changes separately.
   @Environment(\.backgroundProminence) private var backgroundProminence
+
+  static func == (lhs: Self, rhs: Self) -> Bool {
+    lhs.isFolder == rhs.isFolder
+      && lhs.icon == rhs.icon
+      && lhs.checkBadgeState == rhs.checkBadgeState
+      && lhs.rowState == rhs.rowState
+  }
 
   private var isEmphasized: Bool {
     backgroundProminence == .increased
   }
 
-  private var resolvedName: String {
-    if isPending { return "truck.box.badge.clock" }
-    if isArchiving { return "archivebox" }
-    if isDeleting { return "trash" }
-    return gitIconName
-  }
-
-  private var resolvedColor: AnyShapeStyle {
-    guard !isEmphasized else { return AnyShapeStyle(.secondary) }
-    if isPending { return AnyShapeStyle(.blue) }
-    if isArchiving { return AnyShapeStyle(.orange) }
-    if isDeleting { return AnyShapeStyle(.red) }
-    return gitIconColor
-  }
-
-  // Folder idle rendering uses the SF Symbol "folder"; busy-state
-  // overrides (pending/archiving/deleting) already use system images.
   private var isSystemImage: Bool {
-    isPending || isArchiving || isDeleting || kind == .folder
+    rowState != .idle || isFolder
   }
 
-  private var isIdleFolder: Bool {
-    kind == .folder && !isPending && !isArchiving && !isDeleting
+  private var folderIconName: String {
+    switch rowState {
+    case .pending: return "truck.box.badge.clock"
+    case .archiving: return "archivebox"
+    case .deleting: return "trash"
+    case .idle: return "folder"
+    }
+  }
+
+  private var folderColor: AnyShapeStyle {
+    guard !isEmphasized else { return AnyShapeStyle(.secondary) }
+    switch rowState {
+    case .pending: return AnyShapeStyle(.blue)
+    case .archiving: return AnyShapeStyle(.orange)
+    case .deleting: return AnyShapeStyle(.red)
+    case .idle: return AnyShapeStyle(.secondary)
+    }
   }
 
   private var accessibilityLabel: String? {
-    if isPending { return "Creating" }
-    if isArchiving { return "Archiving" }
-    if isDeleting { return "Deleting" }
-    return nil
+    switch rowState {
+    case .pending: return "Creating"
+    case .archiving: return "Archiving"
+    case .deleting: return "Deleting"
+    case .idle: return nil
+    }
   }
 
   var body: some View {
     Group {
       if isSystemImage {
-        Image(systemName: resolvedName)
+        Image(systemName: folderIconName)
           .resizable()
           .aspectRatio(contentMode: .fit)
           .fontWeight(.semibold)
+          .foregroundStyle(folderColor)
       } else {
-        Image(resolvedName)
+        Image(icon.assetName)
           .renderingMode(.template)
           .resizable()
           .aspectRatio(contentMode: .fit)
+          .foregroundStyle(isEmphasized ? AnyShapeStyle(.secondary) : icon.color)
       }
     }
-    .foregroundStyle(resolvedColor)
     .frame(width: 16, height: 16)
     .overlay(alignment: .bottomTrailing) {
       if let checkBadgeState, !isSystemImage {
@@ -311,17 +338,10 @@ private struct IconView: View {
   }
 }
 
-// MARK: - Trailing.
-
 private struct TrailingView: View {
+  let store: StoreOf<SidebarItemFeature>
   let shortcutHint: String?
-  let info: WorktreeInfoEntry?
   let showsPullRequestInfo: Bool
-  let pullRequestBadgeText: String?
-  let runningScriptColors: [RepositoryColor]
-  let runningAgents: [AgentPresenceManager.AgentInstance]
-  let showsNotificationIndicator: Bool
-  let notifications: [WorktreeTerminalNotification]
 
   var body: some View {
     if let shortcutHint {
@@ -329,57 +349,104 @@ private struct TrailingView: View {
         .font(.caption)
         .foregroundStyle(.secondary)
     } else {
+      let display = WorktreePullRequestDisplay(
+        worktreeName: store.branchName,
+        pullRequest: showsPullRequestInfo ? store.pullRequest : nil,
+      )
+      let prText = display.pullRequestBadgeStyle?.text
+      let agents = store.agents
+      let scriptColors = store.runningScripts.map(\.tint)
+      let showsNotificationIndicator = store.hasUnseenNotifications
+      let notifications = Array(store.notifications)
+      let added = store.addedLines ?? 0
+      let removed = store.removedLines ?? 0
+      let hasStats = added + removed > 0
+      let hasStatus = !scriptColors.isEmpty || showsNotificationIndicator
+
       HStack(spacing: 6) {
-        DiffStatsView(info: info)
-        if showsPullRequestInfo, let pullRequestBadgeText {
-          Text(pullRequestBadgeText)
-            .font(.caption)
-            .foregroundStyle(.secondary)
-            .transition(.blurReplace)
+        if hasStats {
+          DiffStatsContent(addedLines: added, removedLines: removed)
+            .equatable()
         }
-        if !runningAgents.isEmpty {
-          AgentAvatarGroupView(instances: runningAgents, size: 16)
+        if let prText {
+          PullRequestBadgeContent(text: prText)
+            .equatable()
         }
-        StatusIndicator(
-          runningScriptColors: runningScriptColors,
-          showsNotificationIndicator: showsNotificationIndicator,
-          notifications: notifications
-        )
+        if !agents.isEmpty {
+          RunningAgentsBadgeContent(agents: agents)
+            .equatable()
+        }
+        if hasStatus {
+          StatusIndicator(
+            runningScriptColors: scriptColors,
+            showsNotificationIndicator: showsNotificationIndicator,
+            notifications: notifications,
+          )
+          .equatable()
+        }
       }
+      // Title takes the squeeze under narrow widths, not the counters.
+      .fixedSize(horizontal: true, vertical: false)
     }
   }
 }
 
-// MARK: - Diff stats.
+private struct PullRequestBadgeContent: View, Equatable {
+  let text: String
 
-private struct DiffStatsView: View {
-  let info: WorktreeInfoEntry?
+  var body: some View {
+    Text(text)
+      .font(.caption)
+      .foregroundStyle(.secondary)
+      .transition(.blurReplace)
+  }
+}
+
+private struct RunningAgentsBadgeContent: View, Equatable {
+  let agents: [AgentPresenceFeature.AgentInstance]
+
+  var body: some View {
+    AgentAvatarGroupView(instances: agents, size: 16)
+  }
+}
+
+private struct DiffStatsContent: View, Equatable {
+  let addedLines: Int
+  let removedLines: Int
+  // `==` ignores @Environment; SwiftUI tracks env changes separately.
   @Environment(\.backgroundProminence) private var backgroundProminence
+
+  static func == (lhs: Self, rhs: Self) -> Bool {
+    lhs.addedLines == rhs.addedLines && lhs.removedLines == rhs.removedLines
+  }
 
   var body: some View {
     let isEmphasized = backgroundProminence == .increased
-    if let added = info?.addedLines, let removed = info?.removedLines, added + removed > 0 {
-      HStack(spacing: 2) {
-        Text("+\(added)")
-          .foregroundStyle(isEmphasized ? AnyShapeStyle(.secondary) : AnyShapeStyle(.green))
-        Text("-\(removed)")
-          .foregroundStyle(isEmphasized ? AnyShapeStyle(.secondary) : AnyShapeStyle(.red))
-      }
-      .font(.caption)
-      .monospacedDigit()
-      .transition(.blurReplace)
+    HStack(spacing: 2) {
+      Text("+\(addedLines)")
+        .foregroundStyle(isEmphasized ? AnyShapeStyle(.secondary) : AnyShapeStyle(.green))
+      Text("-\(removedLines)")
+        .foregroundStyle(isEmphasized ? AnyShapeStyle(.secondary) : AnyShapeStyle(.red))
     }
+    .font(.caption)
+    .monospacedDigit()
+    .transition(.blurReplace)
   }
 }
 
-// MARK: - Status indicator.
-
-private struct StatusIndicator: View {
+private struct StatusIndicator: View, Equatable {
   let runningScriptColors: [RepositoryColor]
   let showsNotificationIndicator: Bool
   let notifications: [WorktreeTerminalNotification]
+  // `==` ignores @Environment; SwiftUI tracks env changes separately.
   @Environment(\.backgroundProminence) private var backgroundProminence
   @Environment(\.focusNotificationAction) private var focusNotificationAction: (WorktreeTerminalNotification) -> Void
+
+  static func == (lhs: Self, rhs: Self) -> Bool {
+    lhs.runningScriptColors == rhs.runningScriptColors
+      && lhs.showsNotificationIndicator == rhs.showsNotificationIndicator
+      && lhs.notifications == rhs.notifications
+  }
 
   var body: some View {
     let isEmphasized = backgroundProminence == .increased
@@ -409,11 +476,6 @@ private struct StatusIndicator: View {
   }
 }
 
-// MARK: - Multi-color ping dot.
-
-/// Displays a pulsing dot that cycles through multiple script tint
-/// colors when more than one script is running. Falls back to the
-/// single-color pulsing behavior when only one color is present.
 private struct MultiColorPingDot: View {
   let colors: [RepositoryColor]
   let isEmphasized: Bool
@@ -421,7 +483,6 @@ private struct MultiColorPingDot: View {
   let showsSolidCenter: Bool
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-  /// Unique, ordered colors derived from the input.
   private var uniqueColors: [Color] {
     guard !isEmphasized else { return [.primary] }
     var seen = Set<RepositoryColor>()
@@ -440,7 +501,6 @@ private struct MultiColorPingDot: View {
         showsSolidCenter: showsSolidCenter
       )
     } else if reduceMotion {
-      // Show a static dot with the first color when motion is reduced.
       StaticDot(color: resolved[0], size: size, showsSolidCenter: showsSolidCenter)
     } else {
       CyclingDot(colors: resolved, size: size, showsSolidCenter: showsSolidCenter)
@@ -448,7 +508,6 @@ private struct MultiColorPingDot: View {
   }
 }
 
-/// Static dot used when accessibility reduce-motion is enabled.
 private struct StaticDot: View {
   let color: Color
   let size: CGFloat
@@ -470,7 +529,6 @@ private struct StaticDot: View {
   }
 }
 
-/// Animated dot that smoothly cycles through the provided colors.
 private struct CyclingDot: View {
   let colors: [Color]
   let size: CGFloat
@@ -500,8 +558,6 @@ private struct CyclingDot: View {
   }
 }
 
-// MARK: - Pulsing dot.
-
 private struct PingDot: View {
   let color: Color
   let size: CGFloat
@@ -520,9 +576,6 @@ private struct PingDot: View {
   }
 }
 
-/// Expanding, fading ring driven by `phaseAnimator` rather than
-/// `.repeatForever` so SwiftUI can pause the timeline when the view
-/// is occluded and so parent re-evaluations don't restart the cycle.
 private struct PingRing: View {
   let color: Color
   let size: CGFloat
@@ -536,15 +589,10 @@ private struct PingRing: View {
           .scaleEffect(expanded ? 2 : 1)
           .opacity(expanded ? 0 : 0.6)
       } animation: { expanded in
-        // Snap back to the seed phase instantly, then ease out the
-        // expansion — yields a non-autoreversing ping without the
-        // always-on `.repeatForever` animation driver.
         expanded ? .easeOut(duration: 1) : .linear(duration: 0.001)
       }
   }
 }
-
-// MARK: - Focus notification environment.
 
 private nonisolated let notificationEnvironmentLogger = SupaLogger("Notifications")
 

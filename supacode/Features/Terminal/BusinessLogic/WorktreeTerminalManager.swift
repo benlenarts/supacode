@@ -1,3 +1,4 @@
+import ComposableArchitecture
 import Foundation
 import Observation
 import Sharing
@@ -16,8 +17,24 @@ final class WorktreeTerminalManager {
   @Shared(.settingsFile) private var settingsFile: SettingsFile
   private var notificationsEnabled = true
   private var lastNotificationIndicatorCount: Int?
+  /// Per-worktree dedup of `worktreeProjectionChanged`; identical projections
+  /// (common on hook storms) are dropped before they hit the AsyncStream.
+  private var lastEmittedProjections: [Worktree.ID: WorktreeRowProjection] = [:]
   private var eventContinuation: AsyncStream<TerminalClient.Event>.Continuation?
   private var pendingEvents: [TerminalClient.Event] = []
+  @ObservationIgnored
+  private var pendingIdleHookEvents: [IdleDebounceKey: Task<Void, Never>] = [:]
+  @ObservationIgnored
+  private let hookEventSleep: @Sendable (Duration) async throws -> Void
+  /// Holds `.idle` long enough to collapse PostToolUse/PreToolUse busy/idle alternation
+  /// into a sustained busy; stays sub-perceptible for the badge clearing at end-of-session.
+  private static let idleHookDebounceDuration: Duration = .milliseconds(400)
+
+  private struct IdleDebounceKey: Hashable {
+    let surfaceID: UUID
+    let agent: SkillAgent
+  }
+
   var selectedWorktreeID: Worktree.ID?
   var saveLayoutSnapshot: ((Worktree.ID, TerminalLayoutSnapshot?) -> Void)?
   var loadLayoutSnapshot: ((Worktree.ID) -> TerminalLayoutSnapshot?)?
@@ -26,8 +43,13 @@ final class WorktreeTerminalManager {
   /// Query received from the CLI via socket. Parameters: resource name, params, client FD.
   var onQuery: ((String, [String: String], Int32) -> Void)?
 
-  init(runtime: GhosttyRuntime, socketServer: AgentHookSocketServer? = nil) {
+  init<C: Clock<Duration>>(
+    runtime: GhosttyRuntime,
+    socketServer: AgentHookSocketServer? = nil,
+    clock: C = ContinuousClock(),
+  ) {
     self.runtime = runtime
+    self.hookEventSleep = { duration in try await clock.sleep(for: duration) }
     let resolvedServer = socketServer ?? AgentHookSocketServer()
     guard resolvedServer.socketPath != nil else {
       self.socketServer = nil
@@ -36,6 +58,10 @@ final class WorktreeTerminalManager {
     }
     self.socketServer = resolvedServer
     configureSocketServer(resolvedServer)
+  }
+
+  isolated deinit {
+    for task in pendingIdleHookEvents.values { task.cancel() }
   }
 
   private func configureSocketServer(_ server: AgentHookSocketServer) {
@@ -66,20 +92,49 @@ final class WorktreeTerminalManager {
       handler(resource, params, clientFD)
     }
     // Always record; the badges toggle gates DISPLAY in
-    // `AgentPresenceManager.agents(forSurface:)` / `agents(across:)`.
+    // `AgentPresenceFeature.State.agents(forSurface:badgesEnabled:)`.
     // Gating recording too would drop session_start events fired while
     // the toggle was off, so flipping it back on later wouldn't restore
     // badges for already-running agents.
     server.onEvent = { [weak self] event in
-      AgentPresenceManager.shared.record(event: event)
-      // Push the activity change into the owning worktree state so
-      // task-status consumers (sidebar shimmer, dock indicator) see
-      // it without polling the presence manager.
-      guard let states = self?.states.values else { return }
-      for state in states where state.surfaceActivityChanged(surfaceID: event.surfaceID) {
-        break
-      }
+      self?.dispatchHookEvent(event)
     }
+  }
+
+  /// Holds `.idle` for a debounce window so PostToolUse / PreToolUse storms don't flap downstream UI.
+  /// Lives at the socket boundary so the debounce applies before the event lands in TCA.
+  private func dispatchHookEvent(_ event: AgentHookEvent) {
+    guard let agent = SkillAgent(rawValue: event.agent) else {
+      applyHookEvent(event)
+      return
+    }
+    let key = IdleDebounceKey(surfaceID: event.surfaceID, agent: agent)
+    pendingIdleHookEvents.removeValue(forKey: key)?.cancel()
+    guard event.eventName == .idle else {
+      applyHookEvent(event)
+      return
+    }
+    let sleep = hookEventSleep
+    pendingIdleHookEvents[key] = Task { [weak self] in
+      try? await sleep(Self.idleHookDebounceDuration)
+      // MainActor serializes the resume; this task can't race with another
+      // dispatch on the same key (cancel-on-new-event is the only way to
+      // interleave, and it sets isCancelled before we get here).
+      guard !Task.isCancelled, let self else { return }
+      self.applyHookEvent(event)
+      self.pendingIdleHookEvents.removeValue(forKey: key)
+    }
+  }
+
+  private func cancelPendingIdleHooks(forSurfaceIDs surfaceIDs: Set<UUID>) {
+    let stale = pendingIdleHookEvents.keys.filter { surfaceIDs.contains($0.surfaceID) }
+    for key in stale {
+      pendingIdleHookEvents.removeValue(forKey: key)?.cancel()
+    }
+  }
+
+  private func applyHookEvent(_ event: AgentHookEvent) {
+    emit(.agentHookEventReceived(event))
   }
 
   // MARK: - CLI queries.
@@ -266,6 +321,11 @@ final class WorktreeTerminalManager {
       }
     }
     emitNotificationIndicatorCountIfNeeded()
+    // Seed each worktree's projection so rows attached after the stream start
+    // pick up the current snapshot (otherwise they'd stay default until the
+    // next mutation).
+    lastEmittedProjections.removeAll()
+    for id in states.keys { emitProjection(for: id) }
     return stream
   }
 
@@ -301,6 +361,9 @@ final class WorktreeTerminalManager {
     state.isSelected = { [weak self] in
       self?.selectedWorktreeID == worktree.id
     }
+    state.onSurfacesClosed = { [weak self] ids in
+      self?.emit(.surfacesClosed(ids))
+    }
     state.onNotificationReceived = { [weak self] surfaceID, title, body in
       self?.emit(
         .notificationReceived(
@@ -310,21 +373,26 @@ final class WorktreeTerminalManager {
           body: body
         )
       )
+      self?.emitProjection(for: worktree.id)
     }
     state.onNotificationIndicatorChanged = { [weak self] in
       self?.emitNotificationIndicatorCountIfNeeded()
+      self?.emitProjection(for: worktree.id)
     }
     state.onTabCreated = { [weak self] in
       self?.emit(.tabCreated(worktreeID: worktree.id))
+      self?.emitProjection(for: worktree.id)
     }
     state.onTabClosed = { [weak self] in
       self?.emit(.tabClosed(worktreeID: worktree.id))
+      self?.emitProjection(for: worktree.id)
     }
     state.onFocusChanged = { [weak self] surfaceID in
       self?.emit(.focusChanged(worktreeID: worktree.id, surfaceID: surfaceID))
     }
     state.onTaskStatusChanged = { [weak self] status in
       self?.emit(.taskStatusChanged(worktreeID: worktree.id, status: status))
+      self?.emitProjection(for: worktree.id)
     }
     state.onBlockingScriptCompleted = { [weak self] kind, exitCode, tabId in
       self?.emit(.blockingScriptCompleted(worktreeID: worktree.id, kind: kind, exitCode: exitCode, tabId: tabId))
@@ -375,6 +443,7 @@ final class WorktreeTerminalManager {
     for (id, state) in states where !worktreeIDs.contains(id) {
       removed.append((id, state))
     }
+    let prunedSurfaceIDs = Set(removed.flatMap { _, state in state.allSurfaceIDs })
     for (id, state) in removed {
       saveLayoutSnapshot?(id, state.captureLayoutSnapshot())
       state.closeAllSurfaces()
@@ -383,6 +452,9 @@ final class WorktreeTerminalManager {
       terminalLogger.info("Pruned \(removed.count) terminal state(s)")
     }
     states = states.filter { worktreeIDs.contains($0.key) }
+    cancelPendingIdleHooks(forSurfaceIDs: prunedSurfaceIDs)
+    // Drop projection cache for pruned worktrees so a future re-add starts clean.
+    for (id, _) in removed { lastEmittedProjections.removeValue(forKey: id) }
     emitNotificationIndicatorCountIfNeeded()
   }
 
@@ -415,10 +487,6 @@ final class WorktreeTerminalManager {
 
   func stateIfExists(for worktreeID: Worktree.ID) -> WorktreeTerminalState? {
     states[worktreeID]
-  }
-
-  func taskStatus(for worktreeID: Worktree.ID) -> WorktreeTaskStatus? {
-    states[worktreeID]?.taskStatus
   }
 
   func isBlockingScriptRunning(kind: BlockingScriptKind, for worktreeID: Worktree.ID) -> Bool {
@@ -478,6 +546,7 @@ final class WorktreeTerminalManager {
 
   func markNotificationRead(worktreeID: Worktree.ID, notificationID: UUID) {
     states[worktreeID]?.markNotificationRead(id: notificationID)
+    emitProjection(for: worktreeID)
   }
 
   func saveAllLayoutSnapshots() {
@@ -516,5 +585,19 @@ final class WorktreeTerminalManager {
       lastNotificationIndicatorCount = count
       emit(.notificationIndicatorChanged(count: count))
     }
+  }
+
+  /// Builds the row projection and emits only when it diverges from the last
+  /// emitted snapshot. Suppresses the no-op storms that PreToolUse / PostToolUse
+  /// hook bursts produce after the per-row equality short-circuit lands.
+  /// Skipped while no subscriber is attached so projections never accumulate in
+  /// `pendingEvents` (the row reads its initial snapshot from the next live emit).
+  private func emitProjection(for worktreeID: Worktree.ID) {
+    guard eventContinuation != nil else { return }
+    guard let state = states[worktreeID] else { return }
+    let projection = state.currentProjection()
+    if lastEmittedProjections[worktreeID] == projection { return }
+    lastEmittedProjections[worktreeID] = projection
+    emit(.worktreeProjectionChanged(worktreeID, projection))
   }
 }

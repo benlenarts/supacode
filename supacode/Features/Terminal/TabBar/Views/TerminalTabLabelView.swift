@@ -8,12 +8,12 @@ struct TerminalTabLabelView: View {
   let isHoveringClose: Bool
   let shortcutHint: String?
   let showsShortcutHint: Bool
-  let runningAgents: [AgentPresenceManager.AgentInstance]
+  let agents: [AgentPresenceFeature.AgentInstance]
 
   var body: some View {
     HStack(spacing: TerminalTabBarMetrics.contentSpacing) {
-      if !runningAgents.isEmpty {
-        AgentAvatarGroupView(instances: runningAgents, size: 14)
+      if !agents.isEmpty {
+        AgentAvatarGroupView(instances: agents, size: 14)
           .padding(.trailing, 2)
       }
       if let icon = tab.icon {

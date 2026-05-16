@@ -10,7 +10,7 @@ struct SidebarView: View {
 
   var body: some View {
     let state = store.state
-    let visibleHotkeyRows = state.orderedSidebarItems(includingRepositoryIDs: state.expandedRepositoryIDs)
+    let visibleHotkeyRows = state.hotkeyWorktreeSlots(includingRepositoryIDs: state.expandedRepositoryIDs)
     let effectiveSelectedRows = state.effectiveSidebarSelectedRows
     let confirmWorktreeAction = makeConfirmWorktreeAction(state: state)
     let archiveWorktreeAction = makeArchiveWorktreeAction(rows: effectiveSelectedRows)
@@ -54,11 +54,11 @@ struct SidebarView: View {
   }
 
   private func makeArchiveWorktreeAction(
-    rows: [SidebarItemModel]
+    rows: [SidebarItemFeature.State]
   ) -> (() -> Void)? {
     let targets =
       rows
-      .filter { $0.isRemovable && !$0.isMainWorktree }
+      .filter { $0.lifecycle == .idle && !$0.isMainWorktree }
       .map {
         RepositoriesFeature.ArchiveWorktreeTarget(
           worktreeID: $0.id,
@@ -76,11 +76,11 @@ struct SidebarView: View {
   }
 
   private func makeDeleteWorktreeAction(
-    rows: [SidebarItemModel]
+    rows: [SidebarItemFeature.State]
   ) -> (() -> Void)? {
     let targets =
       rows
-      .filter { $0.isRemovable }
+      .filter { $0.lifecycle == .idle }
       .map {
         RepositoriesFeature.DeleteWorktreeTarget(
           worktreeID: $0.id,

@@ -29,6 +29,7 @@ struct RepositoriesFeatureTests {
     await store.receive(\.repositoriesLoaded) {
       $0.isRefreshingWorktrees = false
       $0.isInitialLoadComplete = true
+      $0.reconcileSidebarForTesting()
     }
   }
 
@@ -64,6 +65,7 @@ struct RepositoriesFeatureTests {
     ) {
       $0.isRefreshingWorktrees = false
       $0.isInitialLoadComplete = true
+      $0.reconcileSidebarForTesting()
     }
   }
 
@@ -123,6 +125,7 @@ struct RepositoriesFeatureTests {
       )
     ) {
       $0.isInitialLoadComplete = true
+      $0.reconcileSidebarForTesting()
     }
     #expect(
       store.state.sidebar.sections[repoRoot]?.buckets[.pinned]?.items[featureWorktree.id] != nil
@@ -144,6 +147,7 @@ struct RepositoriesFeatureTests {
       $0.$sidebar.withLock { sidebar in
         sidebar.sections[repoRoot] = .init(buckets: [.pinned: .init(items: [:])])
       }
+      $0.reconcileSidebarForTesting()
     }
     #expect(
       store.state.sidebar.sections[repoRoot]?.buckets[.pinned]?.items[featureWorktree.id] == nil
@@ -241,7 +245,7 @@ struct RepositoriesFeatureTests {
       $0.selection = .worktree(wt2.id)
       $0.sidebarSelectedWorktreeIDs = [wt2.id, wt3.id]
       $0.worktreeHistoryBackStack = [wt1.id]
-      $0.pendingTerminalFocusWorktreeIDs = [wt2.id]
+      $0.sidebarItems[id: wt2.id]?.shouldFocusTerminal = true
     }
     await store.receive(\.delegate.selectedWorktreeChanged)
   }
@@ -328,7 +332,7 @@ struct RepositoriesFeatureTests {
       $0.worktreeHistoryBackStack = [wt1.id]
     }
     await store.receive(\.delegate.selectedWorktreeChanged)
-    #expect(store.state.pendingTerminalFocusWorktreeIDs.isEmpty)
+    #expect(store.state.sidebarItems.allSatisfy { !$0.shouldFocusTerminal })
   }
 
   @Test func sidebarSelectionChangedKeepsCurrentSelectionDuringMultiSelect() async {
@@ -348,7 +352,7 @@ struct RepositoriesFeatureTests {
       $0.selection = .worktree(wt1.id)
       $0.sidebarSelectedWorktreeIDs = [wt1.id, wt2.id]
     }
-    #expect(store.state.pendingTerminalFocusWorktreeIDs.isEmpty)
+    #expect(store.state.sidebarItems.allSatisfy { !$0.shouldFocusTerminal })
   }
 
   @Test func repositoriesLoadedPrunesCollapsedRepositoryIDs() async {
@@ -388,6 +392,7 @@ struct RepositoriesFeatureTests {
         sidebar.sections = rebuilt
       }
       $0.isInitialLoadComplete = true
+      $0.reconcileSidebarForTesting()
     }
     await store.receive(\.delegate.repositoriesChanged)
   }
@@ -463,7 +468,7 @@ struct RepositoriesFeatureTests {
 
     // Re-selecting the same worktree should not fire delegate or insert pending focus.
     await store.send(.selectionChanged([.worktree(wt1.id)], focusTerminal: true))
-    #expect(store.state.pendingTerminalFocusWorktreeIDs.isEmpty)
+    #expect(store.state.sidebarItems.allSatisfy { !$0.shouldFocusTerminal })
   }
 
   @Test func repositoriesLoadedFiresDelegateWhenWorktreePropertiesChange() async {
@@ -495,6 +500,7 @@ struct RepositoriesFeatureTests {
     ) {
       $0.repositories = [updatedRepository]
       $0.isInitialLoadComplete = true
+      $0.reconcileSidebarForTesting()
     }
     await store.receive(\.delegate.repositoriesChanged)
     await store.receive(\.delegate.selectedWorktreeChanged)
@@ -542,6 +548,7 @@ struct RepositoriesFeatureTests {
     let wt2 = makeWorktree(id: "/tmp/repo/wt2", name: "wt2", repoRoot: "/tmp/repo")
     let repository = makeRepository(id: "/tmp/repo", worktrees: [wt1, wt2])
     var state = makeState(repositories: [repository])
+    state.reconcileSidebarForTesting()
     state.selection = .worktree(wt1.id)
     state.sidebarSelectedWorktreeIDs = []
 
@@ -685,6 +692,7 @@ struct RepositoriesFeatureTests {
       fetchOrigin: true,
       validationMessage: nil
     )
+    state.reconcileSidebarForTesting()
     let store = TestStore(initialState: state) {
       RepositoriesFeature()
     }
@@ -715,6 +723,7 @@ struct RepositoriesFeatureTests {
       fetchOrigin: true,
       validationMessage: nil
     )
+    state.reconcileSidebarForTesting()
     let store = TestStore(initialState: state) {
       RepositoriesFeature()
     } withDependencies: {
@@ -774,6 +783,7 @@ struct RepositoriesFeatureTests {
       fetchOrigin: true,
       validationMessage: nil
     )
+    state.reconcileSidebarForTesting()
     let store = TestStore(initialState: state) {
       RepositoriesFeature()
     } withDependencies: {
@@ -877,6 +887,7 @@ struct RepositoriesFeatureTests {
       fetchOrigin: true,
       validationMessage: nil
     )
+    state.reconcileSidebarForTesting()
     let store = TestStore(initialState: state) {
       RepositoriesFeature()
     } withDependencies: {
@@ -989,6 +1000,7 @@ struct RepositoriesFeatureTests {
       ]
       $0.selection = SidebarSelection.worktree(pendingID)
       $0.sidebarSelectedWorktreeIDs = [pendingID]
+      $0.reconcileSidebarForTesting()
     }
 
     await store.receive(\.pendingWorktreeProgressUpdated)
@@ -1006,6 +1018,7 @@ struct RepositoriesFeatureTests {
       $0.selection = nil
       $0.sidebarSelectedWorktreeIDs = []
       $0.alert = expectedAlert
+      $0.reconcileSidebarForTesting()
     }
     await store.finish()
   }
@@ -1087,13 +1100,19 @@ struct RepositoriesFeatureTests {
 
     await store.send(.createRandomWorktreeInRepository(repository.id))
     await store.receive(\.createRandomWorktreeSucceeded)
+    await store.receive(\.sidebarItems) {
+      $0.sidebarItems[id: createdWorktree.id]?.lifecycle = .pending
+    }
+    await store.receive(\.sidebarItems) {
+      $0.sidebarItems[id: createdWorktree.id]?.shouldFocusTerminal = true
+    }
     await store.finish()
 
     #expect(store.state.pendingWorktrees.isEmpty)
     #expect(store.state.selection == .worktree(createdWorktree.id))
     #expect(store.state.sidebarSelectedWorktreeIDs == [createdWorktree.id])
-    #expect(store.state.pendingSetupScriptWorktreeIDs.contains(createdWorktree.id))
-    #expect(store.state.pendingTerminalFocusWorktreeIDs.contains(createdWorktree.id))
+    #expect(store.state.sidebarItems[id: createdWorktree.id]?.lifecycle == .pending)
+    #expect(store.state.sidebarItems[id: createdWorktree.id]?.shouldFocusTerminal == true)
     #expect(store.state.repositories[id: repository.id]?.worktrees[id: createdWorktree.id] != nil)
     #expect(store.state.alert == nil)
   }
@@ -1608,6 +1627,7 @@ struct RepositoriesFeatureTests {
         progress: WorktreeCreationProgress(stage: .loadingLocalBranches)
       )
     ]
+    state.reconcileSidebarForTesting()
     let store = TestStore(initialState: state) {
       RepositoriesFeature()
     }
@@ -1626,6 +1646,7 @@ struct RepositoriesFeatureTests {
       )
     ) {
       $0.pendingWorktrees[0].progress = nextProgress
+      $0.reconcileSidebarForTesting()
     }
   }
 
@@ -1645,6 +1666,7 @@ struct RepositoriesFeatureTests {
         )
       )
     ]
+    state.reconcileSidebarForTesting()
     let store = TestStore(initialState: state) {
       RepositoriesFeature()
     }
@@ -1673,6 +1695,7 @@ struct RepositoriesFeatureTests {
       $0.pendingWorktrees = []
       $0.selection = nil
       $0.alert = expectedAlert
+      $0.reconcileSidebarForTesting()
     }
 
     await store.send(
@@ -1936,13 +1959,8 @@ struct RepositoriesFeatureTests {
         buckets: [.pinned: .init(items: [featureWorktree.id: .init()])]
       )
     }
-    state.worktreeInfoByID = [
-      featureWorktree.id: WorktreeInfoEntry(
-        addedLines: nil,
-        removedLines: nil,
-        pullRequest: makePullRequest(state: "MERGED")
-      )
-    ]
+    state.reconcileSidebarForTesting()
+    state.setWorktreeInfoForTesting(id: featureWorktree.id, pullRequest: makePullRequest(state: "MERGED"))
     let fixedDate = Date(timeIntervalSince1970: 1_000_000)
     let store = TestStore(initialState: state) {
       RepositoriesFeature()
@@ -1982,12 +2000,14 @@ struct RepositoriesFeatureTests {
     $repositorySettings.withLock {
       $0.archiveScript = "echo syncing\necho done"
     }
+    state.reconcileSidebarForTesting()
     let store = TestStore(initialState: state) {
       RepositoriesFeature()
     }
 
-    await store.send(.archiveWorktreeConfirmed(featureWorktree.id, repository.id)) {
-      $0.archivingWorktreeIDs = [featureWorktree.id]
+    await store.send(.archiveWorktreeConfirmed(featureWorktree.id, repository.id))
+    await store.receive(\.sidebarItems) {
+      $0.sidebarItems[id: featureWorktree.id]?.lifecycle = .archiving
     }
     await store.receive(\.delegate.runBlockingScript)
   }
@@ -1998,7 +2018,9 @@ struct RepositoriesFeatureTests {
     let repository = makeRepository(id: repoRoot, worktrees: [worktree])
     let definition = ScriptDefinition(kind: .run, name: "Run", command: "npm start")
     var state = makeState(repositories: [repository])
-    state.runningScriptsByWorktreeID = [worktree.id: [definition.id: definition.resolvedTintColor]]
+    state.reconcileSidebarForTesting()
+    state.sidebarItems[id: worktree.id]?.runningScripts[id: definition.id] =
+      .init(id: definition.id, tint: definition.resolvedTintColor)
 
     let store = TestStore(initialState: state) {
       RepositoriesFeature()
@@ -2013,8 +2035,6 @@ struct RepositoriesFeatureTests {
         tabId: nil
       )
     ) {
-      $0.runningScriptsByWorktreeID = [:]
-
       $0.alert = expectedScriptFailureAlert(
         kind: .script(definition),
         exitMessage: "Script failed (exit code 1).",
@@ -2022,6 +2042,9 @@ struct RepositoriesFeatureTests {
         repoName: "repo",
         worktreeName: "feature"
       )
+    }
+    await store.receive(\.sidebarItems) {
+      $0.sidebarItems[id: worktree.id]?.runningScripts.remove(id: definition.id)
     }
   }
 
@@ -2031,7 +2054,9 @@ struct RepositoriesFeatureTests {
     let repository = makeRepository(id: repoRoot, worktrees: [worktree])
     let definition = ScriptDefinition(kind: .run, name: "Run", command: "npm start")
     var state = makeState(repositories: [repository])
-    state.runningScriptsByWorktreeID = [worktree.id: [definition.id: definition.resolvedTintColor]]
+    state.reconcileSidebarForTesting()
+    state.sidebarItems[id: worktree.id]?.runningScripts[id: definition.id] =
+      .init(id: definition.id, tint: definition.resolvedTintColor)
 
     let store = TestStore(initialState: state) {
       RepositoriesFeature()
@@ -2045,9 +2070,9 @@ struct RepositoriesFeatureTests {
         exitCode: 0,
         tabId: nil
       )
-    ) {
-      $0.runningScriptsByWorktreeID = [:]
-
+    )
+    await store.receive(\.sidebarItems) {
+      $0.sidebarItems[id: worktree.id]?.runningScripts.remove(id: definition.id)
     }
     #expect(store.state.alert == nil)
   }
@@ -2058,7 +2083,9 @@ struct RepositoriesFeatureTests {
     let repository = makeRepository(id: repoRoot, worktrees: [worktree])
     let definition = ScriptDefinition(kind: .run, name: "Run", command: "npm start")
     var state = makeState(repositories: [repository])
-    state.runningScriptsByWorktreeID = [worktree.id: [definition.id: definition.resolvedTintColor]]
+    state.reconcileSidebarForTesting()
+    state.sidebarItems[id: worktree.id]?.runningScripts[id: definition.id] =
+      .init(id: definition.id, tint: definition.resolvedTintColor)
 
     let store = TestStore(initialState: state) {
       RepositoriesFeature()
@@ -2072,9 +2099,9 @@ struct RepositoriesFeatureTests {
         exitCode: nil,
         tabId: nil
       )
-    ) {
-      $0.runningScriptsByWorktreeID = [:]
-
+    )
+    await store.receive(\.sidebarItems) {
+      $0.sidebarItems[id: worktree.id]?.runningScripts.remove(id: definition.id)
     }
     #expect(store.state.alert == nil)
   }
@@ -2093,8 +2120,9 @@ struct RepositoriesFeatureTests {
     let repositoryB = makeRepository(id: repoB, worktrees: [worktreeB])
     var state = makeState(repositories: [repositoryA, repositoryB])
     state.selection = .worktree(worktreeA.id)
+    state.reconcileSidebarForTesting()
     let scriptID = UUID()
-    state.runningScriptsByWorktreeID = [worktreeB.id: [scriptID: .purple]]
+    state.sidebarItems[id: worktreeB.id]?.runningScripts[id: scriptID] = .init(id: scriptID, tint: .purple)
 
     #expect(state.runningScriptColors(for: worktreeB.id) == [.purple])
   }
@@ -2104,14 +2132,11 @@ struct RepositoriesFeatureTests {
     let worktree = makeWorktree(id: "\(repoRoot)/feature", name: "feature", repoRoot: repoRoot)
     let repository = makeRepository(id: repoRoot, worktrees: [worktree])
     var state = makeState(repositories: [repository])
+    state.reconcileSidebarForTesting()
     let firstID = UUID(uuidString: "00000000-0000-0000-0000-000000000001")!
     let secondID = UUID(uuidString: "00000000-0000-0000-0000-000000000002")!
-    state.runningScriptsByWorktreeID = [
-      worktree.id: [
-        secondID: .orange,
-        firstID: .purple,
-      ]
-    ]
+    state.sidebarItems[id: worktree.id]?.runningScripts[id: secondID] = .init(id: secondID, tint: .orange)
+    state.sidebarItems[id: worktree.id]?.runningScripts[id: firstID] = .init(id: firstID, tint: .purple)
 
     #expect(state.runningScriptColors(for: worktree.id) == [.purple, .orange])
   }
@@ -2123,12 +2148,11 @@ struct RepositoriesFeatureTests {
     let completing = ScriptDefinition(kind: .run, name: "Run", command: "npm start")
     let surviving = ScriptDefinition(kind: .test, name: "Test", command: "npm test")
     var state = makeState(repositories: [repository])
-    state.runningScriptsByWorktreeID = [
-      worktree.id: [
-        completing.id: completing.resolvedTintColor,
-        surviving.id: surviving.resolvedTintColor,
-      ]
-    ]
+    state.reconcileSidebarForTesting()
+    state.sidebarItems[id: worktree.id]?.runningScripts[id: completing.id] =
+      .init(id: completing.id, tint: completing.resolvedTintColor)
+    state.sidebarItems[id: worktree.id]?.runningScripts[id: surviving.id] =
+      .init(id: surviving.id, tint: surviving.resolvedTintColor)
 
     let store = TestStore(initialState: state) {
       RepositoriesFeature()
@@ -2142,10 +2166,9 @@ struct RepositoriesFeatureTests {
         exitCode: 0,
         tabId: nil
       )
-    ) {
-      $0.runningScriptsByWorktreeID = [
-        worktree.id: [surviving.id: surviving.resolvedTintColor]
-      ]
+    )
+    await store.receive(\.sidebarItems) {
+      $0.sidebarItems[id: worktree.id]?.runningScripts.remove(id: completing.id)
     }
     #expect(store.state.alert == nil)
   }
@@ -2158,7 +2181,9 @@ struct RepositoriesFeatureTests {
     let tabId = TerminalTabID()
     let definition = ScriptDefinition(kind: .run, name: "Run", command: "npm start")
     var state = makeState(repositories: [repository])
-    state.runningScriptsByWorktreeID = [worktree.id: [definition.id: definition.resolvedTintColor]]
+    state.reconcileSidebarForTesting()
+    state.sidebarItems[id: worktree.id]?.runningScripts[id: definition.id] =
+      .init(id: definition.id, tint: definition.resolvedTintColor)
 
     let store = TestStore(initialState: state) {
       RepositoriesFeature()
@@ -2175,8 +2200,6 @@ struct RepositoriesFeatureTests {
         tabId: tabId
       )
     ) {
-      $0.runningScriptsByWorktreeID = [:]
-
       $0.alert = expectedScriptFailureAlert(
         kind: .script(definition),
         exitMessage: "Script failed (exit code 1).",
@@ -2205,13 +2228,13 @@ struct RepositoriesFeatureTests {
     let repository = makeRepository(id: repoRoot, worktrees: [mainWorktree, featureWorktree])
     let tabId = TerminalTabID()
     var state = makeState(repositories: [repository])
-    state.archivingWorktreeIDs = [featureWorktree.id]
+    state.reconcileSidebarForTesting()
+    state.sidebarItems[id: featureWorktree.id]?.lifecycle = .archiving
     let store = TestStore(initialState: state) {
       RepositoriesFeature()
     }
 
     await store.send(.archiveScriptCompleted(worktreeID: featureWorktree.id, exitCode: 1, tabId: tabId)) {
-      $0.archivingWorktreeIDs = []
       $0.alert = expectedScriptFailureAlert(
         kind: .archive,
         exitMessage: "Script failed (exit code 1).",
@@ -2220,6 +2243,9 @@ struct RepositoriesFeatureTests {
         repoName: "repo",
         worktreeName: "feature"
       )
+    }
+    await store.receive(\.sidebarItems) {
+      $0.sidebarItems[id: featureWorktree.id]?.lifecycle = .idle
     }
   }
 
@@ -2234,13 +2260,13 @@ struct RepositoriesFeatureTests {
     let repository = makeRepository(id: repoRoot, worktrees: [mainWorktree, featureWorktree])
     let tabId = TerminalTabID()
     var state = makeState(repositories: [repository])
-    state.deleteScriptWorktreeIDs = [featureWorktree.id]
+    state.reconcileSidebarForTesting()
+    state.sidebarItems[id: featureWorktree.id]?.lifecycle = .deletingScript
     let store = TestStore(initialState: state) {
       RepositoriesFeature()
     }
 
     await store.send(.deleteScriptCompleted(worktreeID: featureWorktree.id, exitCode: 1, tabId: tabId)) {
-      $0.deleteScriptWorktreeIDs = []
       $0.alert = expectedScriptFailureAlert(
         kind: .delete,
         exitMessage: "Script failed (exit code 1).",
@@ -2249,6 +2275,9 @@ struct RepositoriesFeatureTests {
         repoName: "repo",
         worktreeName: "feature"
       )
+    }
+    await store.receive(\.sidebarItems) {
+      $0.sidebarItems[id: featureWorktree.id]?.lifecycle = .idle
     }
   }
 
@@ -2262,7 +2291,8 @@ struct RepositoriesFeatureTests {
     )
     let repository = makeRepository(id: repoRoot, worktrees: [mainWorktree, featureWorktree])
     var state = makeState(repositories: [repository])
-    state.archivingWorktreeIDs = [featureWorktree.id]
+    state.reconcileSidebarForTesting()
+    state.sidebarItems[id: featureWorktree.id]?.lifecycle = .archiving
     let fixedDate = Date(timeIntervalSince1970: 1_000_000)
     let store = TestStore(initialState: state) {
       RepositoriesFeature()
@@ -2280,7 +2310,7 @@ struct RepositoriesFeatureTests {
       store.state.sidebar.sections[repository.id]?
         .buckets[.archived]?.items[featureWorktree.id]?.archivedAt == fixedDate
     )
-    #expect(store.state.archivingWorktreeIDs.isEmpty)
+    #expect((store.state.sidebarItems[id: featureWorktree.id]?.lifecycle ?? .idle) == .idle)
   }
 
   @Test(.dependencies) func archiveScriptCompletedFailureShowsAlert() async {
@@ -2293,13 +2323,13 @@ struct RepositoriesFeatureTests {
     )
     let repository = makeRepository(id: repoRoot, worktrees: [mainWorktree, featureWorktree])
     var state = makeState(repositories: [repository])
-    state.archivingWorktreeIDs = [featureWorktree.id]
+    state.reconcileSidebarForTesting()
+    state.sidebarItems[id: featureWorktree.id]?.lifecycle = .archiving
     let store = TestStore(initialState: state) {
       RepositoriesFeature()
     }
 
     await store.send(.archiveScriptCompleted(worktreeID: featureWorktree.id, exitCode: 7, tabId: nil)) {
-      $0.archivingWorktreeIDs = []
       $0.alert = expectedScriptFailureAlert(
         kind: .archive,
         exitMessage: "Script exited with code 7.",
@@ -2307,6 +2337,9 @@ struct RepositoriesFeatureTests {
         repoName: "repo",
         worktreeName: "feature"
       )
+    }
+    await store.receive(\.sidebarItems) {
+      $0.sidebarItems[id: featureWorktree.id]?.lifecycle = .idle
     }
     #expect(store.state.archivedWorktreeIDs.isEmpty)
   }
@@ -2321,13 +2354,15 @@ struct RepositoriesFeatureTests {
     )
     let repository = makeRepository(id: repoRoot, worktrees: [mainWorktree, featureWorktree])
     var state = makeState(repositories: [repository])
-    state.archivingWorktreeIDs = [featureWorktree.id]
+    state.reconcileSidebarForTesting()
+    state.sidebarItems[id: featureWorktree.id]?.lifecycle = .archiving
     let store = TestStore(initialState: state) {
       RepositoriesFeature()
     }
 
-    await store.send(.archiveScriptCompleted(worktreeID: featureWorktree.id, exitCode: nil, tabId: nil)) {
-      $0.archivingWorktreeIDs = []
+    await store.send(.archiveScriptCompleted(worktreeID: featureWorktree.id, exitCode: nil, tabId: nil))
+    await store.receive(\.sidebarItems) {
+      $0.sidebarItems[id: featureWorktree.id]?.lifecycle = .idle
     }
     #expect(store.state.alert == nil)
     #expect(store.state.archivedWorktreeIDs.isEmpty)
@@ -2361,7 +2396,8 @@ struct RepositoriesFeatureTests {
     let repository = makeRepository(id: repoRoot, worktrees: [mainWorktree, featureWorktree])
     let reloadedRepository = makeRepository(id: repoRoot, worktrees: [mainWorktree])
     var state = makeState(repositories: [repository])
-    state.archivingWorktreeIDs = [featureWorktree.id]
+    state.reconcileSidebarForTesting()
+    state.sidebarItems[id: featureWorktree.id]?.lifecycle = .archiving
     let store = TestStore(initialState: state) {
       RepositoriesFeature()
     }
@@ -2375,10 +2411,14 @@ struct RepositoriesFeatureTests {
         animated: false
       )
     )
-    #expect(store.state.archivingWorktreeIDs.contains(featureWorktree.id))
+    #expect(store.state.sidebarItems[id: featureWorktree.id]?.lifecycle == .archiving)
 
     await store.send(.archiveScriptCompleted(worktreeID: featureWorktree.id, exitCode: 0, tabId: nil))
-    #expect(store.state.archivingWorktreeIDs.isEmpty)
+    await store.receive(\.sidebarItems) {
+      $0.sidebarItems[id: featureWorktree.id]?.lifecycle = .idle
+    }
+    await store.finish()
+    #expect((store.state.sidebarItems[id: featureWorktree.id]?.lifecycle ?? .idle) == .idle)
   }
 
   @Test func repositoriesLoadedKeepsArchiveInFlightUntilFailureCompletion() async {
@@ -2392,7 +2432,8 @@ struct RepositoriesFeatureTests {
     let repository = makeRepository(id: repoRoot, worktrees: [mainWorktree, featureWorktree])
     let reloadedRepository = makeRepository(id: repoRoot, worktrees: [mainWorktree])
     var state = makeState(repositories: [repository])
-    state.archivingWorktreeIDs = [featureWorktree.id]
+    state.reconcileSidebarForTesting()
+    state.sidebarItems[id: featureWorktree.id]?.lifecycle = .archiving
     let store = TestStore(initialState: state) {
       RepositoriesFeature()
     }
@@ -2406,10 +2447,14 @@ struct RepositoriesFeatureTests {
         animated: false
       )
     )
-    #expect(store.state.archivingWorktreeIDs.contains(featureWorktree.id))
+    #expect(store.state.sidebarItems[id: featureWorktree.id]?.lifecycle == .archiving)
 
     await store.send(.archiveScriptCompleted(worktreeID: featureWorktree.id, exitCode: 1, tabId: nil))
-    #expect(store.state.archivingWorktreeIDs.isEmpty)
+    await store.receive(\.sidebarItems) {
+      $0.sidebarItems[id: featureWorktree.id]?.lifecycle = .idle
+    }
+    await store.finish()
+    #expect((store.state.sidebarItems[id: featureWorktree.id]?.lifecycle ?? .idle) == .idle)
     #expect(store.state.alert != nil)
   }
 
@@ -2434,13 +2479,13 @@ struct RepositoriesFeatureTests {
     )
     let repository = makeRepository(id: repoRoot, worktrees: [mainWorktree, featureWorktree])
     var state = makeState(repositories: [repository])
-    state.archivingWorktreeIDs = [featureWorktree.id]
+    state.reconcileSidebarForTesting()
+    state.sidebarItems[id: featureWorktree.id]?.lifecycle = .archiving
     let store = TestStore(initialState: state) {
       RepositoriesFeature()
     }
 
     await store.send(.archiveScriptCompleted(worktreeID: featureWorktree.id, exitCode: exitCode, tabId: nil)) {
-      $0.archivingWorktreeIDs = []
       $0.alert = expectedScriptFailureAlert(
         kind: .archive,
         exitMessage: expectedMessage,
@@ -2448,6 +2493,9 @@ struct RepositoriesFeatureTests {
         repoName: "repo",
         worktreeName: "feature",
       )
+    }
+    await store.receive(\.sidebarItems) {
+      $0.sidebarItems[id: featureWorktree.id]?.lifecycle = .idle
     }
     #expect(store.state.archivedWorktreeIDs.isEmpty)
   }
@@ -2493,14 +2541,14 @@ struct RepositoriesFeatureTests {
     )
     let repository = makeRepository(id: repoRoot, worktrees: [mainWorktree, featureWorktree])
     var state = makeState(repositories: [repository])
-    state.archivingWorktreeIDs = [featureWorktree.id]
+    state.reconcileSidebarForTesting()
+    state.sidebarItems[id: featureWorktree.id]?.lifecycle = .archiving
     let store = TestStore(initialState: state) {
       RepositoriesFeature()
     }
 
     // Exit code 1 must NOT trigger archiveWorktreeApply.
     await store.send(.archiveScriptCompleted(worktreeID: featureWorktree.id, exitCode: 1, tabId: nil)) {
-      $0.archivingWorktreeIDs = []
       $0.alert = expectedScriptFailureAlert(
         kind: .archive,
         exitMessage: "Script failed (exit code 1).",
@@ -2508,6 +2556,9 @@ struct RepositoriesFeatureTests {
         repoName: "repo",
         worktreeName: "feature"
       )
+    }
+    await store.receive(\.sidebarItems) {
+      $0.sidebarItems[id: featureWorktree.id]?.lifecycle = .idle
     }
     #expect(store.state.archivedWorktreeIDs.isEmpty)
   }
@@ -2522,14 +2573,16 @@ struct RepositoriesFeatureTests {
     )
     let repository = makeRepository(id: repoRoot, worktrees: [mainWorktree, featureWorktree])
     var state = makeState(repositories: [repository])
-    state.archivingWorktreeIDs = [featureWorktree.id]
+    state.reconcileSidebarForTesting()
+    state.sidebarItems[id: featureWorktree.id]?.lifecycle = .archiving
     let store = TestStore(initialState: state) {
       RepositoriesFeature()
     }
 
     // Nil exit code (Ctrl+D, tab close) must NOT trigger archiveWorktreeApply.
-    await store.send(.archiveScriptCompleted(worktreeID: featureWorktree.id, exitCode: nil, tabId: nil)) {
-      $0.archivingWorktreeIDs = []
+    await store.send(.archiveScriptCompleted(worktreeID: featureWorktree.id, exitCode: nil, tabId: nil))
+    await store.receive(\.sidebarItems) {
+      $0.sidebarItems[id: featureWorktree.id]?.lifecycle = .idle
     }
     #expect(store.state.archivedWorktreeIDs.isEmpty)
     #expect(store.state.alert == nil)
@@ -2548,7 +2601,8 @@ struct RepositoriesFeatureTests {
     // Test that ONLY exit code 0 leads to archival.
     for exitCode in [1, 2, 126, 127, 128, 130, 137, 255] {
       var state = makeState(repositories: [repository])
-      state.archivingWorktreeIDs = [featureWorktree.id]
+      state.reconcileSidebarForTesting()
+      state.sidebarItems[id: featureWorktree.id]?.lifecycle = .archiving
       let store = TestStore(initialState: state) {
         RepositoriesFeature()
       }
@@ -2583,12 +2637,15 @@ struct RepositoriesFeatureTests {
     $repositorySettings.withLock {
       $0.deleteScript = "echo cleaning\necho done"
     }
+    state.reconcileSidebarForTesting()
     let store = TestStore(initialState: state) {
       RepositoriesFeature()
     }
 
-    await store.send(.deleteSidebarItemConfirmed(featureWorktree.id, repository.id)) {
-      $0.deleteScriptWorktreeIDs = [featureWorktree.id]
+    await store.send(.deleteSidebarItemConfirmed(featureWorktree.id, repository.id))
+    await store.receive(\.sidebarItems) {
+      $0.sidebarItems[id: featureWorktree.id]?.lifecycle = .deletingScript
+      $0.reconcileSidebarForTesting()
     }
     await store.receive(\.delegate.runBlockingScript)
   }
@@ -2604,7 +2661,8 @@ struct RepositoriesFeatureTests {
     let repository = makeRepository(id: repoRoot, worktrees: [mainWorktree, featureWorktree])
     var state = makeState(repositories: [repository])
     state.selection = .worktree(mainWorktree.id)
-    state.deleteScriptWorktreeIDs = [featureWorktree.id]
+    state.reconcileSidebarForTesting()
+    state.sidebarItems[id: featureWorktree.id]?.lifecycle = .deletingScript
     let store = TestStore(initialState: state) {
       RepositoriesFeature()
     } withDependencies: {
@@ -2612,20 +2670,25 @@ struct RepositoriesFeatureTests {
       $0.gitClient.worktrees = { _ in [mainWorktree] }
     }
 
-    await store.send(.deleteScriptCompleted(worktreeID: featureWorktree.id, exitCode: 0, tabId: nil)) {
-      $0.deleteScriptWorktreeIDs = []
+    await store.send(.deleteScriptCompleted(worktreeID: featureWorktree.id, exitCode: 0, tabId: nil))
+    await store.receive(\.sidebarItems) {
+      $0.sidebarItems[id: featureWorktree.id]?.lifecycle = .idle
     }
-    await store.receive(\.deleteWorktreeApply) {
-      $0.deletingWorktreeIDs = [featureWorktree.id]
+    await store.receive(\.deleteWorktreeApply)
+    await store.receive(\.sidebarItems) {
+      $0.sidebarItems[id: featureWorktree.id]?.lifecycle = .deleting
+      $0.reconcileSidebarForTesting()
     }
     await store.receive(\.worktreeDeleted) {
-      $0.deletingWorktreeIDs = []
+      $0.sidebarItems[id: featureWorktree.id]?.lifecycle = .idle
       $0.repositories = [makeRepository(id: repoRoot, worktrees: [mainWorktree])]
+      $0.reconcileSidebarForTesting()
     }
     await store.receive(\.delegate.repositoriesChanged)
     await store.receive(\.reloadRepositories)
     await store.receive(\.repositoriesLoaded) {
       $0.isInitialLoadComplete = true
+      $0.reconcileSidebarForTesting()
     }
   }
 
@@ -2639,13 +2702,13 @@ struct RepositoriesFeatureTests {
     )
     let repository = makeRepository(id: repoRoot, worktrees: [mainWorktree, featureWorktree])
     var state = makeState(repositories: [repository])
-    state.deleteScriptWorktreeIDs = [featureWorktree.id]
+    state.reconcileSidebarForTesting()
+    state.sidebarItems[id: featureWorktree.id]?.lifecycle = .deletingScript
     let store = TestStore(initialState: state) {
       RepositoriesFeature()
     }
 
     await store.send(.deleteScriptCompleted(worktreeID: featureWorktree.id, exitCode: 7, tabId: nil)) {
-      $0.deleteScriptWorktreeIDs = []
       $0.alert = expectedScriptFailureAlert(
         kind: .delete,
         exitMessage: "Script exited with code 7.",
@@ -2653,6 +2716,9 @@ struct RepositoriesFeatureTests {
         repoName: "repo",
         worktreeName: "feature"
       )
+    }
+    await store.receive(\.sidebarItems) {
+      $0.sidebarItems[id: featureWorktree.id]?.lifecycle = .idle
     }
   }
 
@@ -2666,13 +2732,15 @@ struct RepositoriesFeatureTests {
     )
     let repository = makeRepository(id: repoRoot, worktrees: [mainWorktree, featureWorktree])
     var state = makeState(repositories: [repository])
-    state.deleteScriptWorktreeIDs = [featureWorktree.id]
+    state.reconcileSidebarForTesting()
+    state.sidebarItems[id: featureWorktree.id]?.lifecycle = .deletingScript
     let store = TestStore(initialState: state) {
       RepositoriesFeature()
     }
 
-    await store.send(.deleteScriptCompleted(worktreeID: featureWorktree.id, exitCode: nil, tabId: nil)) {
-      $0.deleteScriptWorktreeIDs = []
+    await store.send(.deleteScriptCompleted(worktreeID: featureWorktree.id, exitCode: nil, tabId: nil))
+    await store.receive(\.sidebarItems) {
+      $0.sidebarItems[id: featureWorktree.id]?.lifecycle = .idle
     }
     #expect(store.state.alert == nil)
   }
@@ -2708,6 +2776,7 @@ struct RepositoriesFeatureTests {
     $repositorySettings.withLock {
       $0.deleteScript = "   \n  "
     }
+    state.reconcileSidebarForTesting()
     let store = TestStore(initialState: state) {
       RepositoriesFeature()
     } withDependencies: {
@@ -2716,17 +2785,21 @@ struct RepositoriesFeatureTests {
     }
 
     await store.send(.deleteSidebarItemConfirmed(featureWorktree.id, repository.id))
-    await store.receive(\.deleteWorktreeApply) {
-      $0.deletingWorktreeIDs = [featureWorktree.id]
+    await store.receive(\.deleteWorktreeApply)
+    await store.receive(\.sidebarItems) {
+      $0.sidebarItems[id: featureWorktree.id]?.lifecycle = .deleting
+      $0.reconcileSidebarForTesting()
     }
     await store.receive(\.worktreeDeleted) {
-      $0.deletingWorktreeIDs = []
+      $0.sidebarItems[id: featureWorktree.id]?.lifecycle = .idle
       $0.repositories = [makeRepository(id: repoRoot, worktrees: [mainWorktree])]
+      $0.reconcileSidebarForTesting()
     }
     await store.receive(\.delegate.repositoriesChanged)
     await store.receive(\.reloadRepositories)
     await store.receive(\.repositoriesLoaded) {
       $0.isInitialLoadComplete = true
+      $0.reconcileSidebarForTesting()
     }
   }
 
@@ -2735,7 +2808,25 @@ struct RepositoriesFeatureTests {
     let mainWorktree = makeWorktree(id: repoRoot, name: "main", repoRoot: repoRoot)
     let repository = makeRepository(id: repoRoot, worktrees: [mainWorktree])
     var state = makeState(repositories: [repository])
-    state.deleteScriptWorktreeIDs = ["/tmp/repo/gone"]
+    state.reconcileSidebarForTesting()
+    // The worktree is gone from the roster but the row stayed alive at
+    // `.deletingScript` because the script was already in flight.
+    state.sidebarItems.append(
+      SidebarItemFeature.State(
+        id: "/tmp/repo/gone",
+        repositoryID: repoRoot,
+        kind: .gitWorktree,
+        name: "gone",
+        branchName: "gone",
+        subtitle: nil,
+        workingDirectory: URL(fileURLWithPath: "/tmp/repo/gone"),
+        repositoryAccent: nil,
+        isMainWorktree: false,
+        isPinned: false,
+        hasMergedBadge: false
+      )
+    )
+    state.sidebarItems[id: "/tmp/repo/gone"]?.lifecycle = .deletingScript
     let store = TestStore(initialState: state) {
       RepositoriesFeature()
     }
@@ -2754,8 +2845,10 @@ struct RepositoriesFeatureTests {
     }
 
     await store.send(.deleteScriptCompleted(worktreeID: "/tmp/repo/gone", exitCode: 0, tabId: nil)) {
-      $0.deleteScriptWorktreeIDs = []
       $0.alert = expectedAlert
+    }
+    await store.receive(\.sidebarItems) {
+      $0.sidebarItems[id: "/tmp/repo/gone"]?.lifecycle = .idle
     }
   }
 
@@ -2769,7 +2862,8 @@ struct RepositoriesFeatureTests {
     )
     let repository = makeRepository(id: repoRoot, worktrees: [mainWorktree, featureWorktree])
     var state = makeState(repositories: [repository])
-    state.archivingWorktreeIDs = [featureWorktree.id]
+    state.reconcileSidebarForTesting()
+    state.sidebarItems[id: featureWorktree.id]?.lifecycle = .archiving
     let store = TestStore(initialState: state) {
       RepositoriesFeature()
     }
@@ -2788,7 +2882,8 @@ struct RepositoriesFeatureTests {
     let repository = makeRepository(id: repoRoot, worktrees: [mainWorktree, featureWorktree])
     let reloadedRepository = makeRepository(id: repoRoot, worktrees: [mainWorktree])
     var state = makeState(repositories: [repository])
-    state.deleteScriptWorktreeIDs = [featureWorktree.id]
+    state.reconcileSidebarForTesting()
+    state.sidebarItems[id: featureWorktree.id]?.lifecycle = .deletingScript
     let store = TestStore(initialState: state) {
       RepositoriesFeature()
     }
@@ -2802,10 +2897,14 @@ struct RepositoriesFeatureTests {
         animated: false
       )
     )
-    #expect(store.state.deleteScriptWorktreeIDs.contains(featureWorktree.id))
+    #expect(store.state.sidebarItems[id: featureWorktree.id]?.lifecycle == .deletingScript)
 
     await store.send(.deleteScriptCompleted(worktreeID: featureWorktree.id, exitCode: 0, tabId: nil))
-    #expect(store.state.deleteScriptWorktreeIDs.isEmpty)
+    await store.receive(\.sidebarItems) {
+      $0.sidebarItems[id: featureWorktree.id]?.lifecycle = .idle
+    }
+    await store.finish()
+    #expect((store.state.sidebarItems[id: featureWorktree.id]?.lifecycle ?? .idle) == .idle)
   }
 
   @Test func repositoriesLoadedKeepsDeleteScriptInFlightUntilFailureCompletion() async {
@@ -2819,7 +2918,8 @@ struct RepositoriesFeatureTests {
     let repository = makeRepository(id: repoRoot, worktrees: [mainWorktree, featureWorktree])
     let reloadedRepository = makeRepository(id: repoRoot, worktrees: [mainWorktree])
     var state = makeState(repositories: [repository])
-    state.deleteScriptWorktreeIDs = [featureWorktree.id]
+    state.reconcileSidebarForTesting()
+    state.sidebarItems[id: featureWorktree.id]?.lifecycle = .deletingScript
     let store = TestStore(initialState: state) {
       RepositoriesFeature()
     }
@@ -2833,10 +2933,14 @@ struct RepositoriesFeatureTests {
         animated: false
       )
     )
-    #expect(store.state.deleteScriptWorktreeIDs.contains(featureWorktree.id))
+    #expect(store.state.sidebarItems[id: featureWorktree.id]?.lifecycle == .deletingScript)
 
     await store.send(.deleteScriptCompleted(worktreeID: featureWorktree.id, exitCode: 1, tabId: nil))
-    #expect(store.state.deleteScriptWorktreeIDs.isEmpty)
+    await store.receive(\.sidebarItems) {
+      $0.sidebarItems[id: featureWorktree.id]?.lifecycle = .idle
+    }
+    await store.finish()
+    #expect((store.state.sidebarItems[id: featureWorktree.id]?.lifecycle ?? .idle) == .idle)
     #expect(store.state.alert != nil)
   }
 
@@ -2851,6 +2955,7 @@ struct RepositoriesFeatureTests {
         buckets: [.unpinned: .init(items: [featureWorktree.id: .init()])]
       )
     }
+    state.reconcileSidebarForTesting()
     let store = TestStore(initialState: state) {
       RepositoriesFeature()
     }
@@ -2875,6 +2980,7 @@ struct RepositoriesFeatureTests {
         ]
       )
     }
+    state.reconcileSidebarForTesting()
     let store = TestStore(initialState: state) {
       RepositoriesFeature()
     }
@@ -2904,6 +3010,7 @@ struct RepositoriesFeatureTests {
       )
     }
     state.moveNotifiedWorktreeToTop = false
+    state.reconcileSidebarForTesting()
     let store = TestStore(initialState: state) {
       RepositoriesFeature()
     }
@@ -2920,6 +3027,7 @@ struct RepositoriesFeatureTests {
   @Test func setMoveNotifiedWorktreeToTopUpdatesState() async {
     var state = makeState(repositories: [])
     state.moveNotifiedWorktreeToTop = true
+    state.reconcileSidebarForTesting()
     let store = TestStore(initialState: state) {
       RepositoriesFeature()
     }
@@ -2949,6 +3057,7 @@ struct RepositoriesFeatureTests {
         worktrees: worktrees
       )
       $0.repositories[id: repository.id] = repository
+      $0.reconcileSidebarForTesting()
     }
     #expect(store.state.repositories[id: repository.id]?.worktrees[id: worktree.id]?.name == "falcon")
     #expect(store.state.repositories[id: repository.id]?.worktrees[id: worktree.id]?.createdAt == createdAt)
@@ -2968,7 +3077,8 @@ struct RepositoriesFeatureTests {
         makeWorktree(id: "/tmp/repo-b/wt3", name: "wt3", repoRoot: "/tmp/repo-b")
       ]
     )
-    let state = makeState(repositories: [repoA, repoB])
+    var state = makeState(repositories: [repoA, repoB])
+    state.reconcileSidebarForTesting()
 
     expectNoDifference(
       state.orderedSidebarItems().map(\.id),
@@ -2998,6 +3108,7 @@ struct RepositoriesFeatureTests {
       sidebar.sections[repoB.id] = .init()
       sidebar.sections[repoA.id] = .init()
     }
+    state.reconcileSidebarForTesting()
 
     expectNoDifference(
       state.orderedSidebarItems().map(\.id),
@@ -3026,6 +3137,7 @@ struct RepositoriesFeatureTests {
       sidebar.sections[repoA.id] = .init()
       sidebar.sections[repoB.id] = .init()
     }
+    state.reconcileSidebarForTesting()
 
     expectNoDifference(
       state.orderedSidebarItems(includingRepositoryIDs: [repoB.id]).map(\.id),
@@ -3033,6 +3145,37 @@ struct RepositoriesFeatureTests {
         "/tmp/repo-b/wt2"
       ]
     )
+  }
+
+  @Test func orderedSidebarItemIDsMatchHeavyFlavorAndPlacePendingFirst() {
+    let repoRoot = "/tmp/repo"
+    let main = makeWorktree(id: repoRoot, name: "main", repoRoot: repoRoot)
+    let feature = makeWorktree(id: "/tmp/repo/feature", name: "feature", repoRoot: repoRoot)
+    let other = makeRepository(id: "/tmp/repo-other", worktrees: [])
+    var state = makeState(repositories: [makeRepository(id: repoRoot, worktrees: [main, feature]), other])
+    state.pendingWorktrees = [
+      PendingWorktree(
+        id: "/tmp/repo/wip",
+        repositoryID: repoRoot,
+        progress: WorktreeCreationProgress(stage: .choosingWorktreeName)
+      )
+    ]
+    state.reconcileSidebarForTesting()
+
+    // Pending row renders before non-pending unpinned, so the bucket must too. Otherwise
+    // Cmd+N hint and target diverge while a worktree is creating.
+    expectNoDifference(
+      state.orderedSidebarItemIDs(includingRepositoryIDs: [repoRoot]),
+      [repoRoot, "/tmp/repo/wip", "/tmp/repo/feature"]
+    )
+
+    // ID flavor and heavy flavor must agree for every filter the render path can pass.
+    for filter: Set<Repository.ID> in [[repoRoot], [other.id], [repoRoot, other.id], []] {
+      expectNoDifference(
+        state.orderedSidebarItemIDs(includingRepositoryIDs: filter),
+        state.orderedSidebarItems(includingRepositoryIDs: filter).map(\.id)
+      )
+    }
   }
 
   @Test func orderedRepositoryRootsAppendMissing() {
@@ -3097,6 +3240,7 @@ struct RepositoriesFeatureTests {
         ]
       )
     }
+    state.reconcileSidebarForTesting()
     let store = TestStore(initialState: state) {
       RepositoriesFeature()
     }
@@ -3109,6 +3253,7 @@ struct RepositoriesFeatureTests {
           to: [worktree2.id, worktree3.id, worktree1.id]
         )
       }
+      RepositoriesFeature.syncSidebar(&$0)
     }
   }
 
@@ -3131,6 +3276,7 @@ struct RepositoriesFeatureTests {
         buckets: [.pinned: .init(items: [worktreeB1.id: .init()])]
       )
     }
+    state.reconcileSidebarForTesting()
     let store = TestStore(initialState: state) {
       RepositoriesFeature()
     }
@@ -3139,6 +3285,7 @@ struct RepositoriesFeatureTests {
       $0.$sidebar.withLock { sidebar in
         sidebar.reorder(bucket: .pinned, in: repoA, to: [worktreeA2.id, worktreeA1.id])
       }
+      RepositoriesFeature.syncSidebar(&$0)
     }
   }
 
@@ -3259,6 +3406,7 @@ struct RepositoriesFeatureTests {
     ) {
       $0.repositories = [updatedRepository]
       $0.isInitialLoadComplete = true
+      $0.reconcileSidebarForTesting()
     }
     await store.receive(\.delegate.repositoriesChanged)
     await store.finish()
@@ -3287,6 +3435,7 @@ struct RepositoriesFeatureTests {
       $0.repositories = [updatedRepository]
       $0.selection = nil
       $0.isInitialLoadComplete = true
+      $0.reconcileSidebarForTesting()
     }
     await store.receive(\.delegate.repositoriesChanged)
     await store.receive(\.delegate.selectedWorktreeChanged)
@@ -3300,9 +3449,11 @@ struct RepositoriesFeatureTests {
     let updatedRepository = makeRepository(id: repoRoot, worktrees: [mainWorktree])
     var initialState = makeState(repositories: [repository])
     initialState.selection = .worktree(mainWorktree.id)
-    initialState.deletingWorktreeIDs = [removedWorktree.id]
-    initialState.pendingSetupScriptWorktreeIDs = [removedWorktree.id]
-    initialState.pendingTerminalFocusWorktreeIDs = [removedWorktree.id]
+    initialState.reconcileSidebarForTesting()
+
+    initialState.sidebarItems[id: removedWorktree.id]?.lifecycle = .deleting
+    initialState.sidebarItems[id: removedWorktree.id]?.lifecycle = .pending
+    initialState.sidebarItems[id: removedWorktree.id]?.shouldFocusTerminal = true
     initialState.pendingWorktrees = [
       PendingWorktree(
         id: removedWorktree.id,
@@ -3315,9 +3466,7 @@ struct RepositoriesFeatureTests {
         buckets: [.pinned: .init(items: [removedWorktree.id: .init()])]
       )
     }
-    initialState.worktreeInfoByID = [
-      removedWorktree.id: WorktreeInfoEntry(addedLines: 1, removedLines: 2, pullRequest: nil)
-    ]
+    initialState.setWorktreeInfoForTesting(id: removedWorktree.id, addedLines: 1, removedLines: 2, pullRequest: nil)
     let store = TestStore(initialState: initialState) {
       RepositoriesFeature()
     } withDependencies: {
@@ -3332,20 +3481,19 @@ struct RepositoriesFeatureTests {
         nextSelection: nil
       )
     ) {
-      $0.deletingWorktreeIDs = []
-      $0.pendingSetupScriptWorktreeIDs = []
-      $0.pendingTerminalFocusWorktreeIDs = []
+      $0.sidebarItems[id: removedWorktree.id]?.lifecycle = .idle
       $0.pendingWorktrees = []
-      $0.worktreeInfoByID = [:]
       $0.repositories = [updatedRepository]
       $0.$sidebar.withLock { sidebar in
         sidebar.removeAnywhere(worktree: removedWorktree.id, in: repository.id)
       }
+      $0.reconcileSidebarForTesting()
     }
     await store.receive(\.delegate.repositoriesChanged)
     await store.receive(\.reloadRepositories)
     await store.receive(\.repositoriesLoaded) {
       $0.isInitialLoadComplete = true
+      $0.reconcileSidebarForTesting()
     }
   }
 
@@ -3357,7 +3505,9 @@ struct RepositoriesFeatureTests {
     let updatedRepository = makeRepository(id: repoRoot, worktrees: [mainWorktree])
     var initialState = makeState(repositories: [repository])
     initialState.selection = .worktree(removedWorktree.id)
-    initialState.deletingWorktreeIDs = [removedWorktree.id]
+    initialState.reconcileSidebarForTesting()
+
+    initialState.sidebarItems[id: removedWorktree.id]?.lifecycle = .deleting
     let store = TestStore(initialState: initialState) {
       RepositoriesFeature()
     } withDependencies: {
@@ -3372,15 +3522,17 @@ struct RepositoriesFeatureTests {
         nextSelection: nil
       )
     ) {
-      $0.deletingWorktreeIDs = []
+      $0.sidebarItems[id: removedWorktree.id]?.lifecycle = .idle
       $0.repositories = [updatedRepository]
       $0.selection = .worktree(mainWorktree.id)
+      $0.reconcileSidebarForTesting()
     }
     await store.receive(\.delegate.repositoriesChanged)
     await store.receive(\.delegate.selectedWorktreeChanged)
     await store.receive(\.reloadRepositories)
     await store.receive(\.repositoriesLoaded) {
       $0.isInitialLoadComplete = true
+      $0.reconcileSidebarForTesting()
     }
   }
 
@@ -3414,12 +3566,17 @@ struct RepositoriesFeatureTests {
         pendingID: pendingID
       )
     ) {
-      $0.pendingSetupScriptWorktreeIDs.insert(newWorktree.id)
-      $0.pendingTerminalFocusWorktreeIDs.insert(newWorktree.id)
       $0.pendingWorktrees = []
       $0.selection = .worktree(newWorktree.id)
       $0.sidebarSelectedWorktreeIDs = [newWorktree.id]
       $0.repositories = [updatedRepository]
+      $0.reconcileSidebarForTesting()
+    }
+    await store.receive(\.sidebarItems) {
+      $0.sidebarItems[id: newWorktree.id]?.lifecycle = .pending
+    }
+    await store.receive(\.sidebarItems) {
+      $0.sidebarItems[id: newWorktree.id]?.shouldFocusTerminal = true
     }
 
     await store.receive(\.reloadRepositories)
@@ -3428,6 +3585,7 @@ struct RepositoriesFeatureTests {
     await store.receive(\.delegate.worktreeCreated)
     await store.receive(\.repositoriesLoaded) {
       $0.isInitialLoadComplete = true
+      $0.reconcileSidebarForTesting()
     }
   }
 
@@ -3443,6 +3601,7 @@ struct RepositoriesFeatureTests {
     var state = makeState(repositories: [repository])
     state.mergedWorktreeAction = .archive
     let fixedDate = Date(timeIntervalSince1970: 1_000_000)
+    state.reconcileSidebarForTesting()
     let store = TestStore(initialState: state) {
       RepositoriesFeature()
     }
@@ -3465,7 +3624,7 @@ struct RepositoriesFeatureTests {
         .buckets[.archived]?.items[featureWorktree.id]?.archivedAt == fixedDate
     )
     #expect(
-      store.state.worktreeInfoByID[featureWorktree.id]?.pullRequest == mergedPullRequest
+      store.state.sidebarItems[id: featureWorktree.id]?.pullRequest == mergedPullRequest
     )
   }
 
@@ -3475,6 +3634,7 @@ struct RepositoriesFeatureTests {
     let repository = makeRepository(id: repoRoot, worktrees: [mainWorktree])
     var state = makeState(repositories: [repository])
     state.mergedWorktreeAction = .archive
+    state.reconcileSidebarForTesting()
     let store = TestStore(initialState: state) {
       RepositoriesFeature()
     }
@@ -3485,12 +3645,9 @@ struct RepositoriesFeatureTests {
         repositoryID: repository.id,
         pullRequestsByWorktreeID: [mainWorktree.id: mergedPullRequest]
       )
-    ) {
-      $0.worktreeInfoByID[mainWorktree.id] = WorktreeInfoEntry(
-        addedLines: nil,
-        removedLines: nil,
-        pullRequest: mergedPullRequest
-      )
+    )
+    await store.receive(\.sidebarItems) {
+      $0.sidebarItems[id: mainWorktree.id]?.pullRequest = mergedPullRequest
     }
     await store.finish()
   }
@@ -3506,6 +3663,7 @@ struct RepositoriesFeatureTests {
     let repository = makeRepository(id: repoRoot, worktrees: [mainWorktree, featureWorktree])
     var state = makeState(repositories: [repository])
     state.mergedWorktreeAction = .delete
+    state.reconcileSidebarForTesting()
     let store = TestStore(initialState: state) {
       RepositoriesFeature()
     }
@@ -3519,13 +3677,7 @@ struct RepositoriesFeatureTests {
         repositoryID: repository.id,
         pullRequestsByWorktreeID: [featureWorktree.id: mergedPullRequest]
       )
-    ) {
-      $0.worktreeInfoByID[featureWorktree.id] = WorktreeInfoEntry(
-        addedLines: nil,
-        removedLines: nil,
-        pullRequest: mergedPullRequest
-      )
-    }
+    )
     await store.receive(\.deleteSidebarItemConfirmed)
   }
 
@@ -3540,6 +3692,7 @@ struct RepositoriesFeatureTests {
     let repository = makeRepository(id: repoRoot, worktrees: [mainWorktree, featureWorktree])
     var state = makeState(repositories: [repository])
     state.mergedWorktreeAction = nil
+    state.reconcileSidebarForTesting()
     let store = TestStore(initialState: state) {
       RepositoriesFeature()
     }
@@ -3550,12 +3703,9 @@ struct RepositoriesFeatureTests {
         repositoryID: repository.id,
         pullRequestsByWorktreeID: [featureWorktree.id: mergedPullRequest]
       )
-    ) {
-      $0.worktreeInfoByID[featureWorktree.id] = WorktreeInfoEntry(
-        addedLines: nil,
-        removedLines: nil,
-        pullRequest: mergedPullRequest
-      )
+    )
+    await store.receive(\.sidebarItems) {
+      $0.sidebarItems[id: featureWorktree.id]?.pullRequest = mergedPullRequest
     }
     await store.finish()
   }
@@ -3579,6 +3729,7 @@ struct RepositoriesFeatureTests {
         item: .init(archivedAt: Date(timeIntervalSince1970: 1_000_000))
       )
     }
+    state.reconcileSidebarForTesting()
     let store = TestStore(initialState: state) {
       RepositoriesFeature()
     }
@@ -3589,12 +3740,9 @@ struct RepositoriesFeatureTests {
         repositoryID: repository.id,
         pullRequestsByWorktreeID: [featureWorktree.id: mergedPullRequest]
       )
-    ) {
-      $0.worktreeInfoByID[featureWorktree.id] = WorktreeInfoEntry(
-        addedLines: nil,
-        removedLines: nil,
-        pullRequest: mergedPullRequest
-      )
+    )
+    await store.receive(\.sidebarItems) {
+      $0.sidebarItems[id: featureWorktree.id]?.pullRequest = mergedPullRequest
     }
     await store.finish()
   }
@@ -3610,7 +3758,8 @@ struct RepositoriesFeatureTests {
     let repository = makeRepository(id: repoRoot, worktrees: [mainWorktree, featureWorktree])
     var state = makeState(repositories: [repository])
     state.mergedWorktreeAction = .archive
-    state.deletingWorktreeIDs = [featureWorktree.id]
+    state.reconcileSidebarForTesting()
+    state.sidebarItems[id: featureWorktree.id]?.lifecycle = .deleting
     let store = TestStore(initialState: state) {
       RepositoriesFeature()
     }
@@ -3621,12 +3770,9 @@ struct RepositoriesFeatureTests {
         repositoryID: repository.id,
         pullRequestsByWorktreeID: [featureWorktree.id: mergedPullRequest]
       )
-    ) {
-      $0.worktreeInfoByID[featureWorktree.id] = WorktreeInfoEntry(
-        addedLines: nil,
-        removedLines: nil,
-        pullRequest: mergedPullRequest
-      )
+    )
+    await store.receive(\.sidebarItems) {
+      $0.sidebarItems[id: featureWorktree.id]?.pullRequest = mergedPullRequest
     }
     await store.finish()
   }
@@ -3642,7 +3788,8 @@ struct RepositoriesFeatureTests {
     let repository = makeRepository(id: repoRoot, worktrees: [mainWorktree, featureWorktree])
     var state = makeState(repositories: [repository])
     state.mergedWorktreeAction = .delete
-    state.deleteScriptWorktreeIDs = [featureWorktree.id]
+    state.reconcileSidebarForTesting()
+    state.sidebarItems[id: featureWorktree.id]?.lifecycle = .deletingScript
     let store = TestStore(initialState: state) {
       RepositoriesFeature()
     }
@@ -3653,12 +3800,9 @@ struct RepositoriesFeatureTests {
         repositoryID: repository.id,
         pullRequestsByWorktreeID: [featureWorktree.id: mergedPullRequest]
       )
-    ) {
-      $0.worktreeInfoByID[featureWorktree.id] = WorktreeInfoEntry(
-        addedLines: nil,
-        removedLines: nil,
-        pullRequest: mergedPullRequest
-      )
+    )
+    await store.receive(\.sidebarItems) {
+      $0.sidebarItems[id: featureWorktree.id]?.pullRequest = mergedPullRequest
     }
     await store.finish()
   }
@@ -3675,11 +3819,9 @@ struct RepositoriesFeatureTests {
     let mergedPullRequest = makePullRequest(state: "MERGED", headRefName: featureWorktree.name)
     var state = makeState(repositories: [repository])
     state.mergedWorktreeAction = .delete
-    state.worktreeInfoByID[featureWorktree.id] = WorktreeInfoEntry(
-      addedLines: nil,
-      removedLines: nil,
-      pullRequest: mergedPullRequest
-    )
+    state.reconcileSidebarForTesting()
+    state.setWorktreeInfoForTesting(
+      id: featureWorktree.id, addedLines: nil, removedLines: nil, pullRequest: mergedPullRequest)
     let store = TestStore(initialState: state) {
       RepositoriesFeature()
     }
@@ -3710,12 +3852,9 @@ struct RepositoriesFeatureTests {
         repositoryID: repository.id,
         pullRequestsByWorktreeID: [featureWorktree.id: refreshedPullRequest]
       )
-    ) {
-      $0.worktreeInfoByID[featureWorktree.id] = WorktreeInfoEntry(
-        addedLines: nil,
-        removedLines: nil,
-        pullRequest: refreshedPullRequest
-      )
+    )
+    await store.receive(\.sidebarItems) {
+      $0.sidebarItems[id: featureWorktree.id]?.pullRequest = refreshedPullRequest
     }
     await store.finish()
   }
@@ -3733,11 +3872,9 @@ struct RepositoriesFeatureTests {
     var state = makeState(repositories: [repository])
     state.githubIntegrationAvailability = .disabled
     state.mergedWorktreeAction = .archive
-    state.worktreeInfoByID[featureWorktree.id] = WorktreeInfoEntry(
-      addedLines: nil,
-      removedLines: nil,
-      pullRequest: openPullRequest
-    )
+    state.reconcileSidebarForTesting()
+    state.setWorktreeInfoForTesting(
+      id: featureWorktree.id, addedLines: nil, removedLines: nil, pullRequest: openPullRequest)
     let mergedNumbers = LockIsolated<[Int]>([])
     let store = TestStore(initialState: state) {
       RepositoriesFeature()
@@ -3757,7 +3894,7 @@ struct RepositoriesFeatureTests {
       $0.statusToast = .success("Pull request merged")
     }
     await store.receive(\.worktreeInfoEvent)
-    #expect(store.state.worktreeInfoByID[featureWorktree.id]?.pullRequest?.state == "OPEN")
+    #expect(store.state.sidebarItems[id: featureWorktree.id]?.pullRequest?.state == "OPEN")
     #expect(store.state.archivedWorktreeIDs.isEmpty)
     #expect(mergedNumbers.value == [12])
     await store.finish()
@@ -3775,11 +3912,9 @@ struct RepositoriesFeatureTests {
     let openPullRequest = makePullRequest(state: "OPEN", headRefName: featureWorktree.name, number: 12)
     var state = makeState(repositories: [repository])
     state.githubIntegrationAvailability = .disabled
-    state.worktreeInfoByID[featureWorktree.id] = WorktreeInfoEntry(
-      addedLines: nil,
-      removedLines: nil,
-      pullRequest: openPullRequest
-    )
+    state.reconcileSidebarForTesting()
+    state.setWorktreeInfoForTesting(
+      id: featureWorktree.id, addedLines: nil, removedLines: nil, pullRequest: openPullRequest)
     let closedNumbers = LockIsolated<[Int]>([])
     let store = TestStore(initialState: state) {
       RepositoriesFeature()
@@ -3898,11 +4033,9 @@ struct RepositoriesFeatureTests {
     let openPullRequest = makePullRequest(state: "OPEN", headRefName: featureWorktree.name, number: 88)
     var state = makeState(repositories: [repository])
     state.githubIntegrationAvailability = .disabled
-    state.worktreeInfoByID[featureWorktree.id] = WorktreeInfoEntry(
-      addedLines: nil,
-      removedLines: nil,
-      pullRequest: openPullRequest
-    )
+    state.reconcileSidebarForTesting()
+    state.setWorktreeInfoForTesting(
+      id: featureWorktree.id, addedLines: nil, removedLines: nil, pullRequest: openPullRequest)
     let recordedRemote = LockIsolated<GithubRemoteInfo?>(nil)
     let store = TestStore(initialState: state) {
       RepositoriesFeature()
@@ -3938,11 +4071,9 @@ struct RepositoriesFeatureTests {
     let openPullRequest = makePullRequest(state: "OPEN", headRefName: featureWorktree.name, number: 88)
     var state = makeState(repositories: [repository])
     state.githubIntegrationAvailability = .disabled
-    state.worktreeInfoByID[featureWorktree.id] = WorktreeInfoEntry(
-      addedLines: nil,
-      removedLines: nil,
-      pullRequest: openPullRequest
-    )
+    state.reconcileSidebarForTesting()
+    state.setWorktreeInfoForTesting(
+      id: featureWorktree.id, addedLines: nil, removedLines: nil, pullRequest: openPullRequest)
     let recordedRemote = LockIsolated<GithubRemoteInfo?>(nil)
     let store = TestStore(initialState: state) {
       RepositoriesFeature()
@@ -3997,9 +4128,11 @@ struct RepositoriesFeatureTests {
       )
     ) {
       $0.inFlightPullRequestRefreshRepositoryIDs = [repository.id]
+      $0.inFlightPullRequestBranchSnapshotsByRepositoryID[repository.id] = [:]
     }
     await store.receive(\.repositoryPullRequestRefreshCompleted) {
       $0.inFlightPullRequestRefreshRepositoryIDs = []
+      $0.inFlightPullRequestBranchSnapshotsByRepositoryID = [:]
     }
     await store.finish()
   }
@@ -4119,9 +4252,11 @@ struct RepositoriesFeatureTests {
     }
     await store.receive(\.worktreeInfoEvent) {
       $0.inFlightPullRequestRefreshRepositoryIDs = [repository.id]
+      $0.inFlightPullRequestBranchSnapshotsByRepositoryID[repository.id] = [:]
     }
     await store.receive(\.repositoryPullRequestRefreshCompleted) {
       $0.inFlightPullRequestRefreshRepositoryIDs = []
+      $0.inFlightPullRequestBranchSnapshotsByRepositoryID = [:]
     }
     await store.finish()
   }
@@ -4172,6 +4307,7 @@ struct RepositoriesFeatureTests {
       worktreeIDs: []
     )
     let expectedState = state
+    state.reconcileSidebarForTesting()
     let store = TestStore(initialState: state) {
       RepositoriesFeature()
     }
@@ -4200,6 +4336,7 @@ struct RepositoriesFeatureTests {
         repositoryRootURL: URL(fileURLWithPath: repoRoot),
         worktreeIDs: [mainWorktree.id, featureWorktree.id]
       )
+    state.reconcileSidebarForTesting()
     let store = TestStore(initialState: state) {
       RepositoriesFeature()
     } withDependencies: {
@@ -4218,14 +4355,25 @@ struct RepositoriesFeatureTests {
     }
     await store.receive(\.worktreeInfoEvent) {
       $0.inFlightPullRequestRefreshRepositoryIDs = [repository.id]
+      $0.inFlightPullRequestBranchSnapshotsByRepositoryID[repository.id] = [
+        mainWorktree.id: mainWorktree.name,
+        featureWorktree.id: featureWorktree.name,
+      ]
+    }
+    await store.receive(\.sidebarItems) {
+      $0.sidebarItems[id: mainWorktree.id]?.pullRequestBranchAtQueryTime = mainWorktree.name
+    }
+    await store.receive(\.sidebarItems) {
+      $0.sidebarItems[id: featureWorktree.id]?.pullRequestBranchAtQueryTime = featureWorktree.name
     }
     await store.receive(\.repositoryPullRequestRefreshCompleted) {
       $0.inFlightPullRequestRefreshRepositoryIDs = []
+      $0.inFlightPullRequestBranchSnapshotsByRepositoryID = [:]
     }
     await store.finish()
   }
 
-  @Test func repositoryPullRequestsLoadedSkipsNoopPayload() async {
+  @Test func repositoryPullRequestsLoadedDispatchesUnchangedPullRequestToClearWatermark() async {
     let repoRoot = "/tmp/repo"
     let mainWorktree = makeWorktree(id: repoRoot, name: "main", repoRoot: repoRoot)
     let featureWorktree = makeWorktree(
@@ -4236,11 +4384,12 @@ struct RepositoriesFeatureTests {
     let repository = makeRepository(id: repoRoot, worktrees: [mainWorktree, featureWorktree])
     let pullRequest = makePullRequest(state: "OPEN", headRefName: featureWorktree.name)
     var state = makeState(repositories: [repository])
-    state.worktreeInfoByID[featureWorktree.id] = WorktreeInfoEntry(
-      addedLines: nil,
-      removedLines: nil,
-      pullRequest: pullRequest
-    )
+    state.reconcileSidebarForTesting()
+    state.setWorktreeInfoForTesting(
+      id: featureWorktree.id, addedLines: nil, removedLines: nil, pullRequest: pullRequest)
+    // Watermark armed by a prior `pullRequestQueryStarted`; the identical-PR
+    // completion must clear it so the row can re-arm a future query.
+    state.sidebarItems[id: featureWorktree.id]?.pullRequestBranchAtQueryTime = featureWorktree.name
     let store = TestStore(initialState: state) {
       RepositoriesFeature()
     }
@@ -4251,6 +4400,9 @@ struct RepositoriesFeatureTests {
         pullRequestsByWorktreeID: [featureWorktree.id: pullRequest]
       )
     )
+    await store.receive(\.sidebarItems[id: featureWorktree.id].pullRequestChanged) {
+      $0.sidebarItems[id: featureWorktree.id]?.pullRequestBranchAtQueryTime = nil
+    }
     await store.finish()
   }
 
@@ -4264,10 +4416,9 @@ struct RepositoriesFeatureTests {
     )
     let repository = makeRepository(id: repoRoot, worktrees: [mainWorktree, featureWorktree])
     var state = makeState(repositories: [repository])
-    state.worktreeInfoByID[featureWorktree.id] = WorktreeInfoEntry(
-      addedLines: nil,
-      removedLines: nil,
-      pullRequest: makePullRequest(state: "OPEN", headRefName: featureWorktree.name)
+    state.reconcileSidebarForTesting()
+    state.setWorktreeInfoForTesting(
+      id: featureWorktree.id, addedLines: nil, removedLines: nil, pullRequest: makePullRequest(state: "OPEN")
     )
     let store = TestStore(initialState: state) {
       RepositoriesFeature()
@@ -4279,9 +4430,68 @@ struct RepositoriesFeatureTests {
         repositoryID: repository.id,
         pullRequestsByWorktreeID: pullRequestsByWorktreeID
       )
-    ) {
-      $0.worktreeInfoByID.removeValue(forKey: featureWorktree.id)
+    )
+    await store.receive(\.sidebarItems) {
+      $0.sidebarItems[id: featureWorktree.id]?.pullRequest = nil
     }
+  }
+
+  @Test func worktreeInfoEventRepositoryPullRequestRefreshArmsAndClearsWatermark() async {
+    let repoRoot = "/tmp/repo"
+    let mainWorktree = makeWorktree(id: repoRoot, name: "main", repoRoot: repoRoot)
+    let featureWorktree = makeWorktree(
+      id: "\(repoRoot)/feature",
+      name: "feature",
+      repoRoot: repoRoot
+    )
+    let repository = makeRepository(id: repoRoot, worktrees: [mainWorktree, featureWorktree])
+    var state = makeState(repositories: [repository])
+    state.githubIntegrationAvailability = .available
+    state.reconcileSidebarForTesting()
+    let pullRequest = makePullRequest(state: "OPEN", headRefName: featureWorktree.name)
+    let featureName = featureWorktree.name
+    let store = TestStore(initialState: state) {
+      RepositoriesFeature()
+    } withDependencies: {
+      $0.gitClient.remoteInfo = { _ in GithubRemoteInfo(host: "github.com", owner: "o", repo: "r") }
+      $0.githubCLI.batchPullRequests = { _, _, _, _ in [featureName: pullRequest] }
+    }
+
+    await store.send(
+      .worktreeInfoEvent(
+        .repositoryPullRequestRefresh(
+          repositoryRootURL: URL(fileURLWithPath: repoRoot),
+          worktreeIDs: [mainWorktree.id, featureWorktree.id]
+        )
+      )
+    ) {
+      $0.inFlightPullRequestRefreshRepositoryIDs = [repository.id]
+      $0.inFlightPullRequestBranchSnapshotsByRepositoryID[repository.id] = [
+        mainWorktree.id: mainWorktree.name,
+        featureWorktree.id: featureWorktree.name,
+      ]
+    }
+    await store.receive(\.sidebarItems) {
+      $0.sidebarItems[id: mainWorktree.id]?.pullRequestBranchAtQueryTime = mainWorktree.name
+    }
+    await store.receive(\.sidebarItems) {
+      $0.sidebarItems[id: featureWorktree.id]?.pullRequestBranchAtQueryTime = featureWorktree.name
+    }
+    await store.receive(\.repositoryPullRequestsLoaded)
+    // Main carries `pullRequest == nil` and the completion result is `nil`; the row reducer
+    // skips the PR-value mutation but still clears the watermark armed above.
+    await store.receive(\.sidebarItems[id: mainWorktree.id].pullRequestChanged) {
+      $0.sidebarItems[id: mainWorktree.id]?.pullRequestBranchAtQueryTime = nil
+    }
+    await store.receive(\.sidebarItems[id: featureWorktree.id].pullRequestChanged) {
+      $0.sidebarItems[id: featureWorktree.id]?.pullRequest = pullRequest
+      $0.sidebarItems[id: featureWorktree.id]?.pullRequestBranchAtQueryTime = nil
+    }
+    await store.receive(\.repositoryPullRequestRefreshCompleted) {
+      $0.inFlightPullRequestRefreshRepositoryIDs = []
+      $0.inFlightPullRequestBranchSnapshotsByRepositoryID = [:]
+    }
+    await store.finish()
   }
 
   @Test func unarchiveWorktreeNoopsWhenNotArchived() async {
@@ -4318,6 +4528,7 @@ struct RepositoriesFeatureTests {
         item: .init(archivedAt: eightDaysAgo)
       )
     }
+    state.reconcileSidebarForTesting()
     let store = TestStore(initialState: state) {
       RepositoriesFeature()
     }
@@ -4349,6 +4560,7 @@ struct RepositoriesFeatureTests {
         item: .init(archivedAt: threeDaysAgo)
       )
     }
+    state.reconcileSidebarForTesting()
     let store = TestStore(initialState: state) {
       RepositoriesFeature()
     }
@@ -4373,6 +4585,7 @@ struct RepositoriesFeatureTests {
         item: .init(archivedAt: eightDaysAgo)
       )
     }
+    state.reconcileSidebarForTesting()
     let store = TestStore(initialState: state) {
       RepositoriesFeature()
     }
@@ -4402,7 +4615,8 @@ struct RepositoriesFeatureTests {
         item: .init(archivedAt: eightDaysAgo)
       )
     }
-    state.deletingWorktreeIDs = [featureWorktree.id]
+    state.reconcileSidebarForTesting()
+    state.sidebarItems[id: featureWorktree.id]?.lifecycle = .deleting
     let store = TestStore(initialState: state) {
       RepositoriesFeature()
     }
@@ -4431,6 +4645,7 @@ struct RepositoriesFeatureTests {
         item: .init(archivedAt: eightDaysAgo)
       )
     }
+    state.reconcileSidebarForTesting()
     let store = TestStore(initialState: state) {
       RepositoriesFeature()
     }
@@ -4459,6 +4674,7 @@ struct RepositoriesFeatureTests {
         item: .init(archivedAt: eightDaysAgo)
       )
     }
+    state.reconcileSidebarForTesting()
     let store = TestStore(initialState: state) {
       RepositoriesFeature()
     }
@@ -4493,7 +4709,8 @@ struct RepositoriesFeatureTests {
         item: .init(archivedAt: eightDaysAgo)
       )
     }
-    state.deleteScriptWorktreeIDs = [featureWorktree.id]
+    state.reconcileSidebarForTesting()
+    state.sidebarItems[id: featureWorktree.id]?.lifecycle = .deletingScript
     let store = TestStore(initialState: state) {
       RepositoriesFeature()
     }
@@ -4523,7 +4740,8 @@ struct RepositoriesFeatureTests {
         item: .init(archivedAt: eightDaysAgo)
       )
     }
-    state.archivingWorktreeIDs = [featureWorktree.id]
+    state.reconcileSidebarForTesting()
+    state.sidebarItems[id: featureWorktree.id]?.lifecycle = .archiving
     let store = TestStore(initialState: state) {
       RepositoriesFeature()
     }
@@ -4553,6 +4771,7 @@ struct RepositoriesFeatureTests {
         item: .init(archivedAt: exactlySevenDaysAgo)
       )
     }
+    state.reconcileSidebarForTesting()
     let store = TestStore(initialState: state) {
       RepositoriesFeature()
     }
@@ -4584,6 +4803,7 @@ struct RepositoriesFeatureTests {
         item: .init(archivedAt: eightDaysAgo)
       )
     }
+    state.reconcileSidebarForTesting()
     let store = TestStore(initialState: state) {
       RepositoriesFeature()
     }
@@ -4631,6 +4851,7 @@ struct RepositoriesFeatureTests {
         item: .init(archivedAt: eightDaysAgo)
       )
     }
+    state.reconcileSidebarForTesting()
     let store = TestStore(initialState: state) {
       RepositoriesFeature()
     }
@@ -4657,6 +4878,7 @@ struct RepositoriesFeatureTests {
     let repository = makeRepository(id: "/tmp/repo", worktrees: [wt1, wt2])
     var state = makeState(repositories: [repository])
     state.selection = .worktree(wt2.id)
+    state.reconcileSidebarForTesting()
     let store = TestStore(initialState: state) {
       RepositoriesFeature()
     }
@@ -4676,6 +4898,7 @@ struct RepositoriesFeatureTests {
     let repository = makeRepository(id: "/tmp/repo", worktrees: [wt1, wt2])
     var state = makeState(repositories: [repository])
     state.selection = .worktree(wt1.id)
+    state.reconcileSidebarForTesting()
     let store = TestStore(initialState: state) {
       RepositoriesFeature()
     }
@@ -4693,7 +4916,9 @@ struct RepositoriesFeatureTests {
     let wt1 = makeWorktree(id: "/tmp/wt1", name: "alpha")
     let wt2 = makeWorktree(id: "/tmp/wt2", name: "beta")
     let repository = makeRepository(id: "/tmp/repo", worktrees: [wt1, wt2])
-    let store = TestStore(initialState: makeState(repositories: [repository])) {
+    var state = makeState(repositories: [repository])
+    state.reconcileSidebarForTesting()
+    let store = TestStore(initialState: state) {
       RepositoriesFeature()
     }
 
@@ -4713,6 +4938,7 @@ struct RepositoriesFeatureTests {
     var state = makeState(repositories: [repository])
     state.selection = .worktree(wt1.id)
     state.sidebarSelectedWorktreeIDs = [wt1.id, wt3.id]
+    state.reconcileSidebarForTesting()
     let store = TestStore(initialState: state) {
       RepositoriesFeature()
     }
@@ -4730,7 +4956,9 @@ struct RepositoriesFeatureTests {
     let wt1 = makeWorktree(id: "/tmp/wt1", name: "alpha")
     let wt2 = makeWorktree(id: "/tmp/wt2", name: "beta")
     let repository = makeRepository(id: "/tmp/repo", worktrees: [wt1, wt2])
-    let store = TestStore(initialState: makeState(repositories: [repository])) {
+    var state = makeState(repositories: [repository])
+    state.reconcileSidebarForTesting()
+    let store = TestStore(initialState: state) {
       RepositoriesFeature()
     }
 
@@ -4738,6 +4966,32 @@ struct RepositoriesFeatureTests {
     await store.receive(\.selectWorktree) {
       $0.selection = .worktree(wt2.id)
       $0.sidebarSelectedWorktreeIDs = [wt2.id]
+    }
+    await store.receive(\.delegate.selectedWorktreeChanged)
+  }
+
+  @Test func selectNextWorktreeFollowsSidebarOrderNotRawWorktreeList() async {
+    let repoRoot = "/tmp/repo"
+    let main = makeWorktree(id: repoRoot, name: "main", repoRoot: repoRoot)
+    let feature = makeWorktree(id: "/tmp/repo/feature", name: "feature", repoRoot: repoRoot)
+    let bugfix = makeWorktree(id: "/tmp/repo/bugfix", name: "bugfix", repoRoot: repoRoot)
+    let repository = makeRepository(id: repoRoot, worktrees: [main, feature, bugfix])
+    var state = makeState(repositories: [repository])
+    state.selection = .worktree(main.id)
+    // Pin bugfix so the sidebar order is [main, bugfix, feature], not the raw worktree order.
+    state.$sidebar.withLock { sidebar in
+      sidebar.sections[repoRoot] = .init(buckets: [.pinned: .init(items: [bugfix.id: .init()])])
+    }
+    state.reconcileSidebarForTesting()
+    let store = TestStore(initialState: state) {
+      RepositoriesFeature()
+    }
+
+    await store.send(.selectNextWorktree)
+    await store.receive(\.selectWorktree) {
+      $0.selection = .worktree(bugfix.id)
+      $0.sidebarSelectedWorktreeIDs = [bugfix.id]
+      $0.worktreeHistoryBackStack = [main.id]
     }
     await store.receive(\.delegate.selectedWorktreeChanged)
   }
@@ -4755,6 +5009,7 @@ struct RepositoriesFeatureTests {
     let repository = makeRepository(id: "/tmp/repo", worktrees: [worktree])
     var state = makeState(repositories: [repository])
     state.selection = .worktree(worktree.id)
+    state.reconcileSidebarForTesting()
     let store = TestStore(initialState: state) {
       RepositoriesFeature()
     }
@@ -4779,6 +5034,7 @@ struct RepositoriesFeatureTests {
     state.$sidebar.withLock { sidebar in
       sidebar.sections[repo2.id, default: .init()].collapsed = true
     }
+    state.reconcileSidebarForTesting()
     let store = TestStore(initialState: state) {
       RepositoriesFeature()
     }
@@ -4804,6 +5060,7 @@ struct RepositoriesFeatureTests {
     state.$sidebar.withLock { sidebar in
       sidebar.sections[repo2.id, default: .init()].collapsed = true
     }
+    state.reconcileSidebarForTesting()
     let store = TestStore(initialState: state) {
       RepositoriesFeature()
     }
@@ -4825,6 +5082,7 @@ struct RepositoriesFeatureTests {
     state.$sidebar.withLock { sidebar in
       sidebar.sections[repo1.id, default: .init()].collapsed = true
     }
+    state.reconcileSidebarForTesting()
     let store = TestStore(initialState: state) {
       RepositoriesFeature()
     }
@@ -4840,6 +5098,7 @@ struct RepositoriesFeatureTests {
     state.$sidebar.withLock { sidebar in
       sidebar.sections[repo1.id, default: .init()].collapsed = true
     }
+    state.reconcileSidebarForTesting()
     let store = TestStore(initialState: state) {
       RepositoriesFeature()
     }
@@ -4859,6 +5118,7 @@ struct RepositoriesFeatureTests {
     state.$sidebar.withLock { sidebar in
       sidebar.sections[repo2.id, default: .init()].collapsed = true
     }
+    state.reconcileSidebarForTesting()
     let store = TestStore(initialState: state) {
       RepositoriesFeature()
     }
@@ -4881,6 +5141,7 @@ struct RepositoriesFeatureTests {
     var state = makeState(repositories: [repository])
     state.selection = .worktree(wt1.id)
     state.worktreeHistoryForwardStack = [wt2.id]
+    state.reconcileSidebarForTesting()
     let store = TestStore(initialState: state) {
       RepositoriesFeature()
     }
@@ -4900,6 +5161,7 @@ struct RepositoriesFeatureTests {
     var state = makeState(repositories: [repository])
     state.selection = .worktree(wt1.id)
     state.sidebarSelectedWorktreeIDs = [wt1.id]
+    state.reconcileSidebarForTesting()
     let store = TestStore(initialState: state) {
       RepositoriesFeature()
     }
@@ -4915,6 +5177,7 @@ struct RepositoriesFeatureTests {
     var state = makeState(repositories: [repository])
     state.selection = .worktree(wt2.id)
     state.worktreeHistoryBackStack = [wt1.id]
+    state.reconcileSidebarForTesting()
     let store = TestStore(initialState: state) {
       RepositoriesFeature()
     }
@@ -4935,6 +5198,7 @@ struct RepositoriesFeatureTests {
     var state = makeState(repositories: [repository])
     state.selection = .worktree(wt1.id)
     state.worktreeHistoryForwardStack = [wt2.id]
+    state.reconcileSidebarForTesting()
     let store = TestStore(initialState: state) {
       RepositoriesFeature()
     }
@@ -4953,6 +5217,7 @@ struct RepositoriesFeatureTests {
     let repository = makeRepository(id: "/tmp/repo", worktrees: [wt1])
     var state = makeState(repositories: [repository])
     state.selection = .worktree(wt1.id)
+    state.reconcileSidebarForTesting()
     let store = TestStore(initialState: state) {
       RepositoriesFeature()
     }
@@ -4965,6 +5230,7 @@ struct RepositoriesFeatureTests {
     let repository = makeRepository(id: "/tmp/repo", worktrees: [wt1])
     var state = makeState(repositories: [repository])
     state.selection = .worktree(wt1.id)
+    state.reconcileSidebarForTesting()
     let store = TestStore(initialState: state) {
       RepositoriesFeature()
     }
@@ -4982,6 +5248,7 @@ struct RepositoriesFeatureTests {
     // back stack but no longer resolves; the navigator should skip
     // it and land on wt1.
     state.worktreeHistoryBackStack = [wt1.id, "/tmp/wt2-deleted"]
+    state.reconcileSidebarForTesting()
     let store = TestStore(initialState: state) {
       RepositoriesFeature()
     }
@@ -5001,6 +5268,7 @@ struct RepositoriesFeatureTests {
     var state = makeState(repositories: [repository])
     state.selection = .worktree(wt1.id)
     state.worktreeHistoryBackStack = ["/tmp/gone-a", "/tmp/gone-b"]
+    state.reconcileSidebarForTesting()
     let store = TestStore(initialState: state) {
       RepositoriesFeature()
     }
@@ -5050,12 +5318,17 @@ struct RepositoriesFeatureTests {
         pendingID: pendingID,
       )
     ) {
-      $0.pendingSetupScriptWorktreeIDs.insert(newWorktree.id)
-      $0.pendingTerminalFocusWorktreeIDs.insert(newWorktree.id)
       $0.pendingWorktrees = []
       $0.selection = .worktree(newWorktree.id)
       $0.sidebarSelectedWorktreeIDs = [newWorktree.id]
       $0.repositories = [updatedRepository]
+      $0.reconcileSidebarForTesting()
+    }
+    await store.receive(\.sidebarItems) {
+      $0.sidebarItems[id: newWorktree.id]?.lifecycle = .pending
+    }
+    await store.receive(\.sidebarItems) {
+      $0.sidebarItems[id: newWorktree.id]?.shouldFocusTerminal = true
     }
     await store.receive(\.reloadRepositories)
     await store.receive(\.delegate.repositoriesChanged)
@@ -5063,6 +5336,7 @@ struct RepositoriesFeatureTests {
     await store.receive(\.delegate.worktreeCreated)
     await store.receive(\.repositoriesLoaded) {
       $0.isInitialLoadComplete = true
+      $0.reconcileSidebarForTesting()
     }
     #expect(store.state.worktreeHistoryBackStack == [mainWorktree.id])
     #expect(store.state.worktreeHistoryForwardStack.isEmpty)
@@ -5131,6 +5405,7 @@ struct RepositoriesFeatureTests {
     state.selection = .worktree(featureWorktree.id)
     state.sidebarSelectedWorktreeIDs = [featureWorktree.id]
     state.worktreeHistoryBackStack = [mainWorktree.id]
+    state.reconcileSidebarForTesting()
     let store = TestStore(initialState: state) {
       RepositoriesFeature()
     }
@@ -5158,6 +5433,7 @@ struct RepositoriesFeatureTests {
     state.selection = .worktree(featureWorktree.id)
     state.sidebarSelectedWorktreeIDs = [featureWorktree.id]
     state.worktreeHistoryBackStack = [mainWorktree.id]
+    state.reconcileSidebarForTesting()
     let store = TestStore(initialState: state) {
       RepositoriesFeature()
     }
@@ -5186,6 +5462,7 @@ struct RepositoriesFeatureTests {
     var state = makeState(repositories: [repository])
     state.selection = .worktree(worktree.id)
     state.sidebarSelectedWorktreeIDs = [worktree.id]
+    state.reconcileSidebarForTesting()
     let store = TestStore(initialState: state) {
       RepositoriesFeature()
     }
@@ -5233,6 +5510,7 @@ struct RepositoriesFeatureTests {
     var state = makeState(repositories: [repository])
     state.selection = .worktree(worktrees[0].id)
     state.worktreeHistoryBackStack = (1..<51).map { worktrees[$0].id }
+    state.reconcileSidebarForTesting()
     let store = TestStore(initialState: state) {
       RepositoriesFeature()
     }
@@ -5336,21 +5614,23 @@ struct RepositoriesFeatureTests {
     id: String,
     name: String,
     repositoryID: Repository.ID = "/tmp/repo",
-    kind: SidebarItemModel.Kind = .git,
+    kind: SidebarItemFeature.State.Kind = .gitWorktree,
     detail: String = "detail",
     isPinned: Bool = false,
     isMainWorktree: Bool = false
-  ) -> SidebarItemModel {
-    SidebarItemModel(
+  ) -> SidebarItemFeature.State {
+    SidebarItemFeature.State(
       id: id,
       repositoryID: repositoryID,
       kind: kind,
       name: name,
-      detail: detail,
-      info: nil,
-      isPinned: isPinned,
+      branchName: name,
+      subtitle: detail.isEmpty ? nil : detail,
+      workingDirectory: URL(fileURLWithPath: id),
+      repositoryAccent: nil,
       isMainWorktree: isMainWorktree,
-      status: .idle
+      isPinned: isPinned,
+      hasMergedBadge: false
     )
   }
 
@@ -5364,13 +5644,13 @@ struct RepositoriesFeatureTests {
     #expect(row.sidebarDisplayName == "feature-branch")
   }
 
-  @Test func sidebarDisplayNameFallsBackToDetailWhenIdLacksSlash() {
-    let row = makeSidebarItem(id: "wt-id", name: "feature/branch", detail: "/tmp/repo/wt-folder")
+  @Test func sidebarDisplayNameFallsBackToSubtitleLastComponentWhenIdHasNoSlash() {
+    let row = makeSidebarItem(id: "row-no-slash", name: "feature/branch", detail: "/tmp/repo/wt-folder")
     #expect(row.sidebarDisplayName == "wt-folder")
   }
 
-  @Test func sidebarDisplayNameFallsBackToNameWhenNoPathInfo() {
-    let row = makeSidebarItem(id: "wt-id", name: "feature/branch", detail: ".")
+  @Test func sidebarDisplayNameFallsBackToBranchNameWhenIdAndSubtitleEmpty() {
+    let row = makeSidebarItem(id: "row-no-slash", name: "feature/branch", detail: "")
     #expect(row.sidebarDisplayName == "feature/branch")
   }
 
@@ -5582,6 +5862,7 @@ struct RepositoriesFeatureTests {
       $0.repositories = [repoA, repoB]
       $0.repositoryRoots = [repoRootA, repoRootB].map { URL(fileURLWithPath: $0) }
       $0.isInitialLoadComplete = true
+      $0.reconcileSidebarForTesting()
     }
     await store.receive(\.delegate.repositoriesChanged)
     await store.finish()
@@ -5608,6 +5889,7 @@ struct RepositoriesFeatureTests {
     state.$sidebar.withLock { $0.focusedWorktreeID = worktreeB.id }
     state.shouldRestoreLastFocusedWorktree = true
 
+    state.reconcileSidebarForTesting()
     let store = TestStore(initialState: state) {
       RepositoriesFeature()
     } withDependencies: {
@@ -5632,6 +5914,7 @@ struct RepositoriesFeatureTests {
       $0.selection = .worktree(worktreeB.id)
       $0.shouldRestoreLastFocusedWorktree = false
       $0.isInitialLoadComplete = true
+      $0.reconcileSidebarForTesting()
     }
     await store.receive(\.delegate.repositoriesChanged)
     await store.receive(\.delegate.selectedWorktreeChanged)
@@ -5805,6 +6088,7 @@ struct RepositoriesFeatureTests {
       $0.repositories = [folderRepo]
       $0.repositoryRoots = [rootURL]
       $0.isInitialLoadComplete = true
+      $0.reconcileSidebarForTesting()
     }
     await store.receive(\.delegate.repositoriesChanged)
     await store.finish()
@@ -5892,6 +6176,7 @@ struct RepositoriesFeatureTests {
       ]
       $0.repositoryRoots = [gitRoot, folderRoot].map { URL(fileURLWithPath: $0) }
       $0.isInitialLoadComplete = true
+      $0.reconcileSidebarForTesting()
     }
     await store.receive(\.delegate.repositoriesChanged)
     await store.finish()
@@ -5945,6 +6230,7 @@ struct RepositoriesFeatureTests {
       $0.repositories = [folderRepo]
       $0.repositoryRoots = [standardizedURL]
       $0.isInitialLoadComplete = true
+      $0.reconcileSidebarForTesting()
     }
     await store.receive(\.delegate.repositoriesChanged)
     await store.finish()
@@ -6011,6 +6297,7 @@ struct RepositoriesFeatureTests {
     state.repositoryRoots = [folderURL]
     state.isInitialLoadComplete = true
 
+    state.reconcileSidebarForTesting()
     let store = TestStore(initialState: state) {
       RepositoriesFeature()
     } withDependencies: {
@@ -6095,6 +6382,7 @@ struct RepositoriesFeatureTests {
     state.repositoryRoots = [folderURL]
     state.isInitialLoadComplete = true
 
+    state.reconcileSidebarForTesting()
     let store = TestStore(initialState: state) {
       RepositoriesFeature()
     } withDependencies: {
@@ -6161,6 +6449,7 @@ struct RepositoriesFeatureTests {
     // since the test dispatches the action directly.
     state.seedRemovalBatch(pending: [folderRepo.id: .folderUnlink])
 
+    state.reconcileSidebarForTesting()
     let store = TestStore(initialState: state) {
       RepositoriesFeature()
     } withDependencies: {
@@ -6215,12 +6504,13 @@ struct RepositoriesFeatureTests {
     state.repositoryRoots = [folderURL]
     state.isInitialLoadComplete = true
     state.seedRemovalBatch(pending: [folderRepo.id: .folderUnlink])
-    state.deleteScriptWorktreeIDs.insert(folderWorktree.id)
+    state.reconcileSidebarForTesting()
+    state.sidebarItems[id: folderWorktree.id]?.lifecycle = .deletingScript
 
     #expect(state.isRemovingRepository(folderRepo) == false)
-    let rows = state.sidebarItems(in: folderRepo)
-    #expect(rows.first?.status == .deleting(inTerminal: true))
-    #expect(rows.first?.kind == .folder)
+    let row = state.sidebarItems[id: folderWorktree.id]
+    #expect(row?.lifecycle == .deletingScript)
+    #expect(row?.kind == .folder)
   }
 
   @Test func deleteWorktreeScriptFailureForFolderClearsRemovingState() async {
@@ -6249,7 +6539,8 @@ struct RepositoriesFeatureTests {
     state.repositories = [folderRepo]
     state.repositoryRoots = [folderURL]
     state.isInitialLoadComplete = true
-    state.deleteScriptWorktreeIDs.insert(folderWorktree.id)
+    state.reconcileSidebarForTesting()
+    state.sidebarItems[id: folderWorktree.id]?.lifecycle = .deletingScript
     state.seedRemovalBatch(pending: [folderRepo.id: .folderUnlink])
 
     let store = TestStore(initialState: state) {
@@ -6265,7 +6556,7 @@ struct RepositoriesFeatureTests {
     // `.repositoriesRemoved` because there were no successes.
     #expect(store.state.alert != nil)
     #expect(store.state.removingRepositoryIDs[folderRepo.id] == nil)
-    #expect(store.state.deleteScriptWorktreeIDs.isEmpty)
+    #expect((store.state.sidebarItems[id: folderWorktree.id]?.lifecycle ?? .idle) == .idle)
     #expect(store.state.repositories.count == 1)
     #expect(store.state.activeRemovalBatches.isEmpty)
   }
@@ -6296,7 +6587,8 @@ struct RepositoriesFeatureTests {
     state.repositories = [flippedRepo]
     state.repositoryRoots = [folderURL]
     state.isInitialLoadComplete = true
-    state.deleteScriptWorktreeIDs.insert(folderWorktree.id)
+    state.reconcileSidebarForTesting()
+    state.sidebarItems[id: folderWorktree.id]?.lifecycle = .deletingScript
     state.seedRemovalBatch(pending: [flippedRepo.id: .folderTrash])
 
     let store = TestStore(initialState: state) {
@@ -6346,6 +6638,7 @@ struct RepositoriesFeatureTests {
     state.repositoryRoots = [folderURL]
     state.isInitialLoadComplete = true
 
+    state.reconcileSidebarForTesting()
     let store = TestStore(initialState: state) {
       RepositoriesFeature()
     } withDependencies: {
@@ -6395,7 +6688,8 @@ struct RepositoriesFeatureTests {
     state.repositories = [folderRepo]
     state.repositoryRoots = [folderURL]
     state.isInitialLoadComplete = true
-    state.deleteScriptWorktreeIDs.insert(folderWorktree.id)
+    state.reconcileSidebarForTesting()
+    state.sidebarItems[id: folderWorktree.id]?.lifecycle = .deletingScript
     state.seedRemovalBatch(pending: [folderRepo.id: .folderUnlink])
 
     let store = TestStore(initialState: state) {
@@ -6407,7 +6701,7 @@ struct RepositoriesFeatureTests {
       .deleteScriptCompleted(worktreeID: folderWorktree.id, exitCode: nil, tabId: nil)
     )
     await store.skipReceivedActions()
-    #expect(store.state.deleteScriptWorktreeIDs.isEmpty)
+    #expect((store.state.sidebarItems[id: folderWorktree.id]?.lifecycle ?? .idle) == .idle)
     #expect(store.state.removingRepositoryIDs[folderRepo.id] == nil)
     #expect(store.state.repositories.count == 1)
   }
@@ -6468,6 +6762,7 @@ struct RepositoriesFeatureTests {
       TextState("Remove \(folderWorktree.name)?")
     }
 
+    state.reconcileSidebarForTesting()
     let store = TestStore(initialState: state) {
       RepositoriesFeature()
     } withDependencies: {
@@ -6519,6 +6814,7 @@ struct RepositoriesFeatureTests {
     let folderTarget = RepositoriesFeature.DeleteWorktreeTarget(
       worktreeID: folderWorktree.id, repositoryID: folderRepo.id)
 
+    state.reconcileSidebarForTesting()
     let store = TestStore(initialState: state) {
       RepositoriesFeature()
     } withDependencies: {
@@ -6550,11 +6846,11 @@ struct RepositoriesFeatureTests {
     // sidebar row rendered `.deleting(inTerminal: false)` forever.
     // The failure path now clears per-worktree trackers too.
     #expect(
-      !store.state.deletingWorktreeIDs.contains(folderWorktree.id),
+      store.state.sidebarItems[id: folderWorktree.id]?.lifecycle != .deleting,
       "deletingWorktreeIDs must clear on trash failure"
     )
     #expect(
-      !store.state.deleteScriptWorktreeIDs.contains(folderWorktree.id),
+      store.state.sidebarItems[id: folderWorktree.id]?.lifecycle != .deletingScript,
       "deleteScriptWorktreeIDs must clear on trash failure"
     )
     #expect(store.state.activeRemovalBatches.isEmpty)
@@ -6592,6 +6888,7 @@ struct RepositoriesFeatureTests {
     state.repositoryRoots = [urlA, urlB]
     state.isInitialLoadComplete = true
 
+    state.reconcileSidebarForTesting()
     let store = TestStore(initialState: state) {
       RepositoriesFeature()
     } withDependencies: {
@@ -6677,6 +6974,7 @@ struct RepositoriesFeatureTests {
     state.isInitialLoadComplete = true
     state.alert = sentinelAlert
 
+    state.reconcileSidebarForTesting()
     let store = TestStore(initialState: state) {
       RepositoriesFeature()
     } withDependencies: {
@@ -6724,7 +7022,26 @@ struct RepositoriesFeatureTests {
     state.repositories = []
     state.repositoryRoots = []
     state.isInitialLoadComplete = true
-    state.deleteScriptWorktreeIDs.insert(folderWorktreeID)
+    // The row is orphaned (no live repository), but still alive at
+    // `.deletingScript` because the script was already in flight before the
+    // repo vanished. Construct it directly so the guard in the action handler
+    // sees an in-flight row to drain.
+    state.sidebarItems.append(
+      SidebarItemFeature.State(
+        id: folderWorktreeID,
+        repositoryID: folderRoot,
+        kind: .folder,
+        name: "vanished",
+        branchName: "vanished",
+        subtitle: nil,
+        workingDirectory: folderURL,
+        repositoryAccent: nil,
+        isMainWorktree: true,
+        isPinned: false,
+        hasMergedBadge: false
+      )
+    )
+    state.sidebarItems[id: folderWorktreeID]?.lifecycle = .deletingScript
     let batchID = state.seedRemovalBatch(pending: [folderRoot: .folderUnlink])
 
     let store = TestStore(initialState: state) {
@@ -6752,7 +7069,7 @@ struct RepositoriesFeatureTests {
       store.state.activeRemovalBatches[batchID] == nil,
       "batch must drain (succeeded:false) so sibling targets don't hang"
     )
-    #expect(!store.state.deleteScriptWorktreeIDs.contains(folderWorktreeID))
+    #expect(store.state.sidebarItems[id: folderWorktreeID]?.lifecycle != .deletingScript)
   }
 
   @Test func bulkFolderUnlinkTerminatesWithEmptyState() async {
@@ -6790,6 +7107,7 @@ struct RepositoriesFeatureTests {
     state.repositoryRoots = [urlA, urlB, urlC]
     state.isInitialLoadComplete = true
 
+    state.reconcileSidebarForTesting()
     let store = TestStore(initialState: state) {
       RepositoriesFeature()
     } withDependencies: {
@@ -6858,6 +7176,7 @@ struct RepositoriesFeatureTests {
 
     let savedPaths = LockIsolated<[[String]]>([])
     let prunedIDs = LockIsolated<[[String]]>([])
+    state.reconcileSidebarForTesting()
     let store = TestStore(initialState: state) {
       RepositoriesFeature()
     } withDependencies: {
@@ -6936,6 +7255,7 @@ struct RepositoriesFeatureTests {
     state.repositoryRoots = [urlA, urlB]
     state.isInitialLoadComplete = true
 
+    state.reconcileSidebarForTesting()
     let store = TestStore(initialState: state) {
       RepositoriesFeature()
     } withDependencies: {
@@ -7021,6 +7341,7 @@ struct RepositoriesFeatureTests {
     state.repositoryRoots = [gitURL, folderURL]
     state.isInitialLoadComplete = true
 
+    state.reconcileSidebarForTesting()
     let store = TestStore(initialState: state) {
       RepositoriesFeature()
     }
@@ -7061,7 +7382,8 @@ struct RepositoriesFeatureTests {
     state.repositories = [gitRepo]
     state.repositoryRoots = [repoURL]
     state.isInitialLoadComplete = true
-    state.deleteScriptWorktreeIDs.insert(featureWorktree.id)
+    state.reconcileSidebarForTesting()
+    state.sidebarItems[id: featureWorktree.id]?.lifecycle = .deletingScript
     state.seedRemovalBatch(pending: [gitRepo.id: .gitRepositoryUnlink])
 
     let removeCalled = LockIsolated(false)
@@ -7117,7 +7439,8 @@ struct RepositoriesFeatureTests {
     // `.deleteSidebarItemConfirmed` has enqueued
     // `.repositoryRemovalCompleted`.
     state.seedRemovalBatch(pending: [folderRepo.id: .folderUnlink])
-    state.deletingWorktreeIDs.insert(folderWorktree.id)
+    state.reconcileSidebarForTesting()
+    state.sidebarItems[id: folderWorktree.id]?.lifecycle = .deleting
 
     let store = TestStore(initialState: state) {
       RepositoriesFeature()
@@ -7172,6 +7495,7 @@ struct RepositoriesFeatureTests {
     state.isInitialLoadComplete = true
     let folderBatchID = state.seedRemovalBatch(pending: [folderRepo.id: .folderUnlink])
 
+    state.reconcileSidebarForTesting()
     let store = TestStore(initialState: state) {
       RepositoriesFeature()
     } withDependencies: {
@@ -7233,8 +7557,9 @@ struct RepositoriesFeatureTests {
       state.removingRepositoryIDs[folderRepo.id] = RepositoriesFeature.RepositoryRemovalRecord(
         disposition: .folderUnlink, batchID: UUID()
       )
-      state.deletingWorktreeIDs.insert(folderWorktree.id)
-      state.deleteScriptWorktreeIDs.insert(folderWorktree.id)
+      state.reconcileSidebarForTesting()
+      state.sidebarItems[id: folderWorktree.id]?.lifecycle = .deleting
+      state.sidebarItems[id: folderWorktree.id]?.lifecycle = .deletingScript
 
       let store = TestStore(initialState: state) {
         RepositoriesFeature()
@@ -7252,8 +7577,8 @@ struct RepositoriesFeatureTests {
           folderRepo.id, outcome: .failureSilent, selectionWasRemoved: false))
       await store.skipReceivedActions()
       #expect(store.state.removingRepositoryIDs[folderRepo.id] == nil)
-      #expect(!store.state.deletingWorktreeIDs.contains(folderWorktree.id))
-      #expect(!store.state.deleteScriptWorktreeIDs.contains(folderWorktree.id))
+      #expect(store.state.sidebarItems[id: folderWorktree.id]?.lifecycle != .deleting)
+      #expect(store.state.sidebarItems[id: folderWorktree.id]?.lifecycle != .deletingScript)
       #expect(store.state.repositories.contains(where: { $0.id == folderRepo.id }))
     }
   }
@@ -7286,6 +7611,7 @@ struct RepositoriesFeatureTests {
         disposition: .folderUnlink, batchID: UUID()
       )
 
+      state.reconcileSidebarForTesting()
       let store = TestStore(initialState: state) {
         RepositoriesFeature()
       } withDependencies: {

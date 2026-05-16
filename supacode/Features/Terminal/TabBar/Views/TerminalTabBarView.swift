@@ -12,7 +12,7 @@ struct TerminalTabBarView: View {
   let closeAll: () -> Void
   let renameTab: (TerminalTabID, String) -> Void
   let hasNotification: (TerminalTabID) -> Bool
-  let runningAgents: (TerminalTabID) -> [AgentPresenceManager.AgentInstance]
+  let agentsForTab: (TerminalTabID) -> [AgentPresenceFeature.AgentInstance]
   @Environment(\.controlActiveState)
   private var controlActiveState
 
@@ -26,7 +26,7 @@ struct TerminalTabBarView: View {
         closeAll: closeAll,
         renameTab: renameTab,
         hasNotification: hasNotification,
-        runningAgents: runningAgents
+        agentsForTab: agentsForTab,
       )
       Spacer(minLength: 0)
       TerminalTabBarTrailingAccessories(

@@ -3,6 +3,7 @@ import CoreGraphics
 import Dependencies
 import Foundation
 import GhosttyKit
+import IdentifiedCollections
 import Observation
 import Sharing
 import SupacodeSettingsShared
@@ -28,7 +29,6 @@ final class WorktreeTerminalState {
   private var trees: [TerminalTabID: SplitTree<GhosttySurfaceView>] = [:]
   private var surfaces: [UUID: GhosttySurfaceView] = [:]
   private var focusedSurfaceIdByTab: [TerminalTabID: UUID] = [:]
-  private var tabIsRunningById: [TerminalTabID: Bool] = [:]
   var socketPath: String?
   private(set) var shouldHideTabBar = false
   private var blockingScripts: [TerminalTabID: BlockingScriptKind] = [:]
@@ -84,6 +84,8 @@ final class WorktreeTerminalState {
   var onBlockingScriptCompleted: ((BlockingScriptKind, Int?, TerminalTabID?) -> Void)?
   var onCommandPaletteToggle: (() -> Void)?
   var onSetupScriptConsumed: (() -> Void)?
+  /// Forwarded to the manager so it can emit a `surfacesClosed` event into TCA.
+  var onSurfacesClosed: ((Set<UUID>) -> Void)?
 
   init(
     runtime: GhosttyRuntime,
@@ -113,11 +115,19 @@ final class WorktreeTerminalState {
 
   private func isTabBusy(_ tabId: TerminalTabID) -> Bool {
     guard let tree = trees[tabId] else { return false }
-    let leaves = tree.leaves()
-    if leaves.contains(where: { isRunningProgressState($0.bridge.state.progressState) }) {
-      return true
-    }
-    return AgentPresenceManager.shared.hasActivity(in: leaves.map(\.id))
+    return tree.leaves().contains { isRunningProgressState($0.bridge.state.progressState) }
+  }
+
+  /// Per-row projection consumed by `SidebarItemFeature.terminalProjectionChanged`.
+  /// `isProgressBusy` reflects Ghostty progress state only; AppFeature merges
+  /// agent activity downstream of this event.
+  func currentProjection() -> WorktreeRowProjection {
+    WorktreeRowProjection(
+      surfaceIDs: allSurfaceIDs,
+      isProgressBusy: taskStatus == .running,
+      hasUnseenNotifications: hasUnseenNotification,
+      notifications: IdentifiedArray(uniqueElements: notifications),
+    )
   }
 
   func isBlockingScriptRunning(kind: BlockingScriptKind) -> Bool {
@@ -330,7 +340,6 @@ final class WorktreeTerminalState {
       context: creation.context,
       surfaceID: creation.tabID != nil ? tabId.rawValue : nil
     )
-    tabIsRunningById[tabId] = false
     updateShouldHideTabBar()
     if creation.focusing, let surface = tree.root?.leftmostLeaf() {
       focusSurface(surface, in: tabId)
@@ -382,18 +391,6 @@ final class WorktreeTerminalState {
     tabManager.selectTab(tabId)
     focusSurface(in: tabId)
     emitTaskStatusIfChanged()
-  }
-
-  /// Re-evaluate task status and tab dirty flags for a surface whose
-  /// presence-side activity just changed. Returns true when this state
-  /// owns the surface so the caller can stop walking.
-  func surfaceActivityChanged(surfaceID: UUID) -> Bool {
-    guard surfaces[surfaceID] != nil else { return false }
-    for (tabID, _) in trees {
-      tabManager.updateDirty(tabID, isDirty: isTabBusy(tabID))
-    }
-    emitTaskStatusIfChanged()
-    return true
   }
 
   func focusSelectedTab() {
@@ -736,8 +733,7 @@ final class WorktreeTerminalState {
     surfaces.removeAll()
     trees.removeAll()
     focusedSurfaceIdByTab.removeAll()
-    tabIsRunningById.removeAll()
-    AgentPresenceManager.shared.surfacesClosed(closingSurfaceIDs)
+    onSurfacesClosed?(Set(closingSurfaceIDs))
     // Agent busy state lives on GhosttySurfaceState and is cleaned up
     // when surfaces are removed.
     let pendingKinds = Set(blockingScripts.values)
@@ -896,7 +892,6 @@ final class WorktreeTerminalState {
       let tree = SplitTree(view: surface)
       trees[tabId] = tree
       focusedSurfaceIdByTab[tabId] = surface.id
-      tabIsRunningById[tabId] = false
 
       // Recursively restore splits.
       restoreLayoutNode(tabSnapshot.layout, anchor: surface, tabId: tabId)
@@ -1375,7 +1370,7 @@ final class WorktreeTerminalState {
   private func cleanupSurfaceState(for surfaceID: UUID) {
     recentHookBySurfaceID.removeValue(forKey: surfaceID)
     surfaces.removeValue(forKey: surfaceID)
-    AgentPresenceManager.shared.surfaceClosed(surfaceID)
+    onSurfacesClosed?([surfaceID])
   }
 
   private func removeTree(for tabId: TerminalTabID) {
@@ -1385,7 +1380,6 @@ final class WorktreeTerminalState {
       cleanupSurfaceState(for: surface.id)
     }
     focusedSurfaceIdByTab.removeValue(forKey: tabId)
-    tabIsRunningById.removeValue(forKey: tabId)
   }
 
   func tabID(containing surfaceId: UUID) -> TerminalTabID? {
@@ -1403,11 +1397,7 @@ final class WorktreeTerminalState {
   }
 
   private func updateRunningState(for tabId: TerminalTabID) {
-    guard let tree = trees[tabId] else { return }
-    let isRunningNow = tree.leaves().contains { surface in
-      isRunningProgressState(surface.bridge.state.progressState)
-    }
-    tabIsRunningById[tabId] = isRunningNow
+    guard trees[tabId] != nil else { return }
     tabManager.updateDirty(tabId, isDirty: isTabBusy(tabId))
     emitTaskStatusIfChanged()
   }
@@ -1525,7 +1515,6 @@ final class WorktreeTerminalState {
     if newTree.isEmpty {
       trees.removeValue(forKey: tabId)
       focusedSurfaceIdByTab.removeValue(forKey: tabId)
-      tabIsRunningById.removeValue(forKey: tabId)
       cleanupBlockingScriptLaunchDirectory(for: tabId)
       tabManager.closeTab(tabId)
       updateShouldHideTabBar()

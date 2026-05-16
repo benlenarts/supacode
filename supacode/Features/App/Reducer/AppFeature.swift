@@ -19,6 +19,7 @@ private enum CancelID {
 struct AppFeature {
   @ObservableState
   struct State: Equatable {
+    var agentPresence = AgentPresenceFeature.State()
     var repositories: RepositoriesFeature.State
     var settings: SettingsFeature.State
     var updates = UpdatesFeature.State()
@@ -28,6 +29,7 @@ struct AppFeature {
     var globalScripts: [ScriptDefinition] = []
     var notificationIndicatorCount: Int = 0
     var lastKnownSystemNotificationsEnabled: Bool
+    var lastKnownAgentPresenceBadgesEnabled: Bool
     var pendingDeeplinks: [Deeplink] = []
     var isDeeplinkReferenceRequested = false
     @Presents var alert: AlertState<Alert>?
@@ -40,6 +42,7 @@ struct AppFeature {
       self.repositories = repositories
       self.settings = settings
       lastKnownSystemNotificationsEnabled = settings.systemNotificationsEnabled
+      lastKnownAgentPresenceBadgesEnabled = settings.agentPresenceBadgesEnabled
       // Seed from settings so `state.allScripts` doesn't start empty before the
       // first `settingsChanged` delegate fires. Globals aren't worktree-scoped,
       // so deselection (line below in `selectedWorktreeChanged(nil)`)
@@ -67,9 +70,9 @@ struct AppFeature {
     var runningScriptIDs: Set<UUID> {
       guard
         let worktreeID = repositories.selectedWorktreeID,
-        let tints = repositories.runningScriptsByWorktreeID[worktreeID]
+        let scripts = repositories.sidebarItems[id: worktreeID]?.runningScripts
       else { return [] }
-      return Set(tints.keys)
+      return Set(scripts.ids)
     }
 
     /// Whether any `.run`-kind script is currently running in the selected worktree.
@@ -79,6 +82,7 @@ struct AppFeature {
   }
 
   enum Action {
+    case agentPresence(AgentPresenceFeature.Action)
     case appLaunched
     case scenePhaseChanged(ScenePhase)
     case repositories(RepositoriesFeature.Action)
@@ -154,6 +158,12 @@ struct AppFeature {
           }
         )
 
+      case .agentPresence(.delegate(.surfacesChanged(let surfaces))):
+        return agentPresenceFanOutEffect(surfaces: surfaces, state: state)
+
+      case .agentPresence:
+        return .none
+
       case .scenePhaseChanged(let phase):
         switch phase {
         case .active:
@@ -220,7 +230,7 @@ struct AppFeature {
 
       case .repositories(.delegate(.worktreeCreated(let worktree))):
         let shouldRunSetupScript =
-          state.repositories.pendingSetupScriptWorktreeIDs.contains(worktree.id)
+          state.repositories.sidebarItems[id: worktree.id]?.lifecycle == .pending
         return .run { _ in
           await terminalClient.send(
             .ensureInitialTab(
@@ -232,20 +242,22 @@ struct AppFeature {
         }
 
       case .repositories(.delegate(.repositoriesChanged(let repositories))):
+        RepositoriesFeature.syncSidebar(&state.repositories)
         let archivedIDs = state.repositories.archivedWorktreeIDSet
-        let deleteScriptIDs = state.repositories.deleteScriptWorktreeIDs
-        let ids = Set(
-          repositories.flatMap { $0.worktrees.map(\.id) }
-            .filter { !archivedIDs.contains($0) || deleteScriptIDs.contains($0) }
+        let allowed = Set(
+          state.repositories.sidebarItems
+            .filter { item in
+              !archivedIDs.contains(item.id) || item.lifecycle == .deletingScript
+            }
+            .map(\.id)
         )
-        state.repositories.runningScriptsByWorktreeID = state.repositories.runningScriptsByWorktreeID
-          .filter { ids.contains($0.key) }
         let recencyIDs = CommandPaletteFeature.recencyRetentionIDs(
           from: repositories,
           scripts: state.allScripts
         )
         let worktrees = state.repositories.worktreesForInfoWatcher()
-        var effects: [Effect<Action>] = [
+        var effects: [Effect<Action>] = []
+        effects.append(contentsOf: [
           .send(
             .settings(
               .repositoriesChanged(
@@ -260,13 +272,13 @@ struct AppFeature {
             )
           ),
           .send(.commandPalette(.pruneRecency(recencyIDs))),
-          .run { _ in
-            await terminalClient.send(.prune(ids))
+          .run { [allowed] _ in
+            await terminalClient.send(.prune(allowed))
           },
           .run { _ in
             await worktreeInfoWatcher.send(.setWorktrees(worktrees))
           },
-        ]
+        ])
         if !state.pendingDeeplinks.isEmpty {
           let pending = state.pendingDeeplinks
           state.pendingDeeplinks.removeAll()
@@ -310,6 +322,9 @@ struct AppFeature {
         let shouldCheckSystemNotificationPermission =
           settings.systemNotificationsEnabled && !state.lastKnownSystemNotificationsEnabled
         state.lastKnownSystemNotificationsEnabled = settings.systemNotificationsEnabled
+        let agentBadgesFlipped =
+          settings.agentPresenceBadgesEnabled != state.lastKnownAgentPresenceBadgesEnabled
+        state.lastKnownAgentPresenceBadgesEnabled = settings.agentPresenceBadgesEnabled
         // Compare IDs as a set — name/command edits and pure reorders should not re-prune recency.
         let globalScriptIDsChanged = Set(state.globalScripts.map(\.id)) != Set(settings.globalScripts.map(\.id))
         state.globalScripts = settings.globalScripts
@@ -368,6 +383,14 @@ struct AppFeature {
         ]
         if globalScriptIDsChanged {
           effects.append(pruneScriptRecencyEffect(state: state))
+        }
+        if agentBadgesFlipped {
+          effects.append(
+            agentPresenceBadgesToggledEffect(
+              badgesEnabled: settings.agentPresenceBadgesEnabled,
+              state: state
+            )
+          )
         }
         return .merge(effects)
 
@@ -441,7 +464,8 @@ struct AppFeature {
           return .none
         }
         analyticsClient.capture("terminal_tab_created", nil)
-        let shouldRunSetupScript = state.repositories.pendingSetupScriptWorktreeIDs.contains(worktree.id)
+        let shouldRunSetupScript =
+          state.repositories.sidebarItems[id: worktree.id]?.lifecycle == .pending
         return .run { _ in
           await terminalClient.send(.createTab(worktree, runSetupScriptIfNew: shouldRunSetupScript))
         }
@@ -516,14 +540,26 @@ struct AppFeature {
           return .send(.settings(.setSelection(.repositoryScripts(repositoryID))))
         }
         analyticsClient.capture("script_run", ["kind": definition.kind.rawValue])
-        var ids = state.repositories.runningScriptsByWorktreeID[worktree.id] ?? [:]
-        ids[definition.id] = definition.resolvedTintColor
-        state.repositories.runningScriptsByWorktreeID[worktree.id] = ids
-        return .run { _ in
-          await terminalClient.send(
-            .runBlockingScript(worktree, kind: .script(definition), script: definition.command)
+        let tint = definition.resolvedTintColor
+        var effects: [Effect<Action>] = [
+          .run { _ in
+            await terminalClient.send(
+              .runBlockingScript(worktree, kind: .script(definition), script: definition.command)
+            )
+          }
+        ]
+        if state.repositories.sidebarItems[id: worktree.id] != nil {
+          effects.append(
+            .send(
+              .repositories(
+                .sidebarItems(
+                  .element(id: worktree.id, action: .runningScriptStarted(id: definition.id, tint: tint))
+                )
+              )
+            )
           )
         }
+        return .merge(effects)
 
       case .stopScript(let definition):
         guard let worktree = state.repositories.worktree(for: state.repositories.selectedWorktreeID) else {
@@ -912,11 +948,34 @@ struct AppFeature {
           return .send(.repositories(.deleteScriptCompleted(worktreeID: worktreeID, exitCode: exitCode, tabId: tabId)))
         }
 
+      case .terminalEvent(.worktreeProjectionChanged(let worktreeID, let projection)):
+        guard state.repositories.sidebarItems[id: worktreeID] != nil else { return .none }
+        return .send(
+          .repositories(
+            .sidebarItems(
+              .element(id: worktreeID, action: .terminalProjectionChanged(projection))
+            )
+          )
+        )
+
+      case .terminalEvent(.surfacesClosed(let ids)):
+        guard !ids.isEmpty else { return .none }
+        if ids.count == 1, let id = ids.first {
+          return .send(.agentPresence(.surfaceClosed(id)))
+        }
+        return .send(.agentPresence(.surfacesClosed(ids)))
+
+      case .terminalEvent(.agentHookEventReceived(let event)):
+        return .send(.agentPresence(.hookEventReceived(event)))
+
       case .terminalEvent:
         return .none
       }
     }
     core
+    Scope(state: \.agentPresence, action: \.agentPresence) {
+      AgentPresenceFeature()
+    }
     Scope(state: \.repositories, action: \.repositories) {
       RepositoriesFeature()
     }
@@ -932,6 +991,63 @@ struct AppFeature {
     .ifLet(\.$deeplinkInputConfirmation, action: \.deeplinkInputConfirmation) {
       DeeplinkInputConfirmationFeature()
     }
+  }
+
+  // MARK: - Agent presence fan-out.
+
+  /// Routes `agentPresence.delegate.surfacesChanged` into per-row deltas. Each
+  /// affected row gets `agentSnapshotChanged` with the badge list + activity
+  /// flag; the row's `isTaskRunning` derives from `hasAgentActivity` so flipping
+  /// the latter shimmers the sidebar without a separate projection dispatch.
+  private func agentPresenceFanOutEffect(
+    surfaces: Set<UUID>,
+    state: State
+  ) -> Effect<Action> {
+    @Shared(.settingsFile) var settingsFile: SettingsFile
+    let badgesEnabled = settingsFile.global.agentPresenceBadgesEnabled
+    // Hoisted: `surfaceToItemID` is a computed property that rebuilds the dict
+    // per access; reading it once keeps this loop O(surfaces) not O(rows × surfaces).
+    let surfaceToItemID = state.repositories.surfaceToItemID
+    var affectedRowIDs: Set<SidebarItemID> = []
+    for surfaceID in surfaces {
+      guard let rowID = surfaceToItemID[surfaceID] else { continue }
+      affectedRowIDs.insert(rowID)
+    }
+    return agentSnapshotEffects(for: affectedRowIDs, state: state, badgesEnabled: badgesEnabled)
+  }
+
+  /// Re-broadcasts every row's agent snapshot under the supplied badge gate.
+  /// Used when the user flips `agentPresenceBadgesEnabled`, so cached row
+  /// state immediately drains or repopulates without waiting for a hook event.
+  private func agentPresenceBadgesToggledEffect(
+    badgesEnabled: Bool,
+    state: State
+  ) -> Effect<Action> {
+    let rowIDs = state.repositories.sidebarItems
+      .filter { !$0.surfaceIDs.isEmpty }
+      .map(\.id)
+    return agentSnapshotEffects(for: Set(rowIDs), state: state, badgesEnabled: badgesEnabled)
+  }
+
+  private func agentSnapshotEffects(
+    for rowIDs: Set<SidebarItemID>,
+    state: State,
+    badgesEnabled: Bool
+  ) -> Effect<Action> {
+    let presence = state.agentPresence
+    let effects: [Effect<Action>] = rowIDs.compactMap { rowID in
+      guard let row = state.repositories.sidebarItems[id: rowID] else { return nil }
+      let agents = presence.agents(across: row.surfaceIDs, badgesEnabled: badgesEnabled)
+      let hasActivity = presence.hasActivity(in: row.surfaceIDs)
+      return .send(
+        .repositories(
+          .sidebarItems(
+            .element(id: rowID, action: .agentSnapshotChanged(agents, hasActivity: hasActivity))
+          )
+        )
+      )
+    }
+    return .merge(effects)
   }
 
   // MARK: - Open worktree.
@@ -957,7 +1073,7 @@ struct AppFeature {
       }
     }
     let shouldRunSetupScript =
-      state.repositories.pendingSetupScriptWorktreeIDs.contains(worktree.id)
+      state.repositories.sidebarItems[id: worktree.id]?.lifecycle == .pending
     return .run { _ in
       await terminalClient.send(
         .createTabWithInput(
@@ -1291,8 +1407,7 @@ struct AppFeature {
       )
       return .none
     }
-    let runningIDs = state.repositories.runningScriptsByWorktreeID[worktreeID] ?? [:]
-    guard runningIDs[scriptID] == nil else {
+    guard state.repositories.sidebarItems[id: worktreeID]?.runningScripts[id: scriptID] == nil else {
       state.alert = scriptAlert(
         title: "Script already running",
         message: "\"\(definition.displayName)\" is already running in this worktree."
@@ -1309,15 +1424,27 @@ struct AppFeature {
       )
     }
     analyticsClient.capture("script_run", ["kind": definition.kind.rawValue])
-    var updated = runningIDs
-    updated[scriptID] = definition.resolvedTintColor
-    state.repositories.runningScriptsByWorktreeID[worktreeID] = updated
+    let tint = definition.resolvedTintColor
     let terminalClient = terminalClient
-    return .run { _ in
-      await terminalClient.send(
-        .runBlockingScript(worktree, kind: .script(definition), script: definition.command)
+    var effects: [Effect<Action>] = [
+      .run { _ in
+        await terminalClient.send(
+          .runBlockingScript(worktree, kind: .script(definition), script: definition.command)
+        )
+      }
+    ]
+    if state.repositories.sidebarItems[id: worktreeID] != nil {
+      effects.append(
+        .send(
+          .repositories(
+            .sidebarItems(
+              .element(id: worktreeID, action: .runningScriptStarted(id: scriptID, tint: tint))
+            )
+          )
+        )
       )
     }
+    return .merge(effects)
   }
 
   private func stopScriptDeeplinkEffect(
@@ -1337,8 +1464,8 @@ struct AppFeature {
       )
       return .none
     }
-    let runningIDs = state.repositories.runningScriptsByWorktreeID[worktreeID] ?? [:]
-    guard runningIDs[scriptID] != nil else {
+    let runningScripts = state.repositories.sidebarItems[id: worktreeID]?.runningScripts ?? []
+    guard runningScripts[id: scriptID] != nil else {
       state.alert = scriptAlert(
         title: "Script not running",
         message: "\"\(definition.displayName)\" is not currently running in this worktree."

@@ -24,7 +24,7 @@ struct WorktreeCommands: Commands {
   var body: some Commands {
     let overrides = store.settings.shortcutOverrides
     let repositories = store.repositories
-    let orderedRows = visibleHotkeyWorktreeRows ?? repositories.orderedSidebarItems()
+    let orderedRows = visibleHotkeyWorktreeRows ?? repositories.hotkeyWorktreeSlots()
     let pullRequestURL = selectedPullRequestURL
     let githubIntegrationEnabled = store.settings.githubIntegrationEnabled
     let selectNext = AppShortcuts.selectNextWorktree.effective(from: overrides)
@@ -180,15 +180,24 @@ struct WorktreeCommands: Commands {
   private var selectedPullRequestURL: URL? {
     let repositories = store.repositories
     guard let selectedWorktreeID = repositories.selectedWorktreeID else { return nil }
-    let pullRequest = repositories.worktreeInfoByID[selectedWorktreeID]?.pullRequest
+    let pullRequest = repositories.sidebarItems[id: selectedWorktreeID]?.pullRequest
     return pullRequest.flatMap { URL(string: $0.url) }
   }
 
 }
 
+/// Stable projection published through `focusedSceneValue(\.visibleHotkeyWorktreeRows)`.
+/// Carries only fields the menu actually needs so per-row PR / lifecycle ticks
+/// dedupe and don't churn the menu bar (which rebuilds open submenus and drops hover).
+struct HotkeyWorktreeSlot: Equatable, Hashable, Identifiable, Sendable {
+  let id: Worktree.ID
+  let name: String
+  let repositoryID: Repository.ID
+}
+
 private struct WorktreeSelectionSlot {
   let shortcut: AppShortcut
-  let row: SidebarItemModel
+  let row: HotkeyWorktreeSlot
 }
 
 private struct WorktreeShortcutButton: View {
@@ -274,7 +283,7 @@ extension FocusedValues {
     set { self[StopRunScriptActionKey.self] = newValue }
   }
 
-  var visibleHotkeyWorktreeRows: [SidebarItemModel]? {
+  var visibleHotkeyWorktreeRows: [HotkeyWorktreeSlot]? {
     get { self[VisibleHotkeyWorktreeRowsKey.self] }
     set { self[VisibleHotkeyWorktreeRowsKey.self] = newValue }
   }
@@ -289,5 +298,5 @@ private struct StopRunScriptActionKey: FocusedValueKey {
 }
 
 private struct VisibleHotkeyWorktreeRowsKey: FocusedValueKey {
-  typealias Value = [SidebarItemModel]
+  typealias Value = [HotkeyWorktreeSlot]
 }

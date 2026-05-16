@@ -52,6 +52,15 @@ struct TerminalClient {
       worktreeID: Worktree.ID, kind: BlockingScriptKind, exitCode: Int?, tabId: TerminalTabID?)
     case commandPaletteToggleRequested(worktreeID: Worktree.ID)
     case setupScriptConsumed(worktreeID: Worktree.ID)
+    /// Per-worktree projection emitted when surfaces / task-running / unseen / notifications drift.
+    /// Routed by the parent into the matching `SidebarItemFeature` via the row's id.
+    case worktreeProjectionChanged(Worktree.ID, WorktreeRowProjection)
+    /// Forwarded from the terminal manager when surfaces close (single or bulk).
+    /// `AppFeature` translates this into `agentPresence(.surfaceClosed/surfacesClosed)`.
+    case surfacesClosed(Set<UUID>)
+    /// Forwarded from the terminal manager for hook events received over the socket.
+    /// `AppFeature` translates this into `agentPresence(.hookEventReceived)`.
+    case agentHookEventReceived(AgentHookEvent)
   }
 }
 

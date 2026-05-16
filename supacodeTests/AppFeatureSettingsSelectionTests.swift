@@ -17,7 +17,7 @@ struct AppFeatureSettingsSelectionTests {
     )
     let store = TestStore(
       initialState: AppFeature.State(
-        repositories: RepositoriesFeature.State(repositories: [repository]),
+        repositories: RepositoriesFeature.State(reconciledRepositories: [repository]),
         settings: SettingsFeature.State()
       )
     ) {
