@@ -423,13 +423,22 @@ struct WorktreeDetailView: View {
     let onManageGlobalScripts: () -> Void
 
     var body: some ToolbarContent {
-      ToolbarItem(placement: .navigation) {
-        WorktreeToolbarTitleView(
-          content: toolbarState.titleContent,
-          terminalManager: terminalManager
-        )
+      if #available(macOS 26.0, *) {
+        ToolbarItem(placement: .navigation) {
+          WorktreeToolbarTitleView(
+            content: toolbarState.titleContent,
+            terminalManager: terminalManager
+          )
+        }
+        .sharedBackgroundVisibility(.hidden)
+      } else {
+        ToolbarItem(placement: .navigation) {
+          WorktreeToolbarTitleView(
+            content: toolbarState.titleContent,
+            terminalManager: terminalManager
+          )
+        }
       }
-      .sharedBackgroundVisibility(.hidden)
 
       flexibleSpacer
 
@@ -711,20 +720,16 @@ private struct DetailPlaceholderView: View {
 
 private struct ToolbarPlaceholderContent: ToolbarContent {
   var body: some ToolbarContent {
-    ToolbarItem(placement: .navigation) {
-      Button {
-      } label: {
-        HStack(spacing: 6) {
-          Image(systemName: "arrow.trianglehead.branch")
-            .foregroundStyle(.secondary)
-          Text("feature/branch")
-        }
-        .font(.headline)
+    if #available(macOS 26.0, *) {
+      ToolbarItem(placement: .navigation) {
+        placeholderTitleButton
       }
-      .redacted(reason: .placeholder)
-      .shimmer(isActive: true)
+      .sharedBackgroundVisibility(.hidden)
+    } else {
+      ToolbarItem(placement: .navigation) {
+        placeholderTitleButton
+      }
     }
-    .sharedBackgroundVisibility(.hidden)
 
     if #available(macOS 26.0, *) {
       ToolbarSpacer(.flexible)
@@ -783,6 +788,20 @@ private struct ToolbarPlaceholderContent: ToolbarContent {
       .redacted(reason: .placeholder)
       .shimmer(isActive: true)
     }
+  }
+
+  private var placeholderTitleButton: some View {
+    Button {
+    } label: {
+      HStack(spacing: 6) {
+        Image(systemName: "arrow.trianglehead.branch")
+          .foregroundStyle(.secondary)
+        Text("feature/branch")
+      }
+      .font(.headline)
+    }
+    .redacted(reason: .placeholder)
+    .shimmer(isActive: true)
   }
 }
 

@@ -44,9 +44,20 @@ struct SidebarCard<Header: View, Content: View>: View {
     }
     .padding(12)
     .frame(maxWidth: .infinity, alignment: .leading)
-    .glassEffect(.regular, in: .rect(cornerRadius: 10))
+    .modifier(GlassEffectModifier())
     .padding(.horizontal, 10)
     .padding(.bottom, 10)
+  }
+}
+
+private struct GlassEffectModifier: ViewModifier {
+  func body(content: Content) -> some View {
+    if #available(macOS 26.0, *) {
+      content.glassEffect(.regular, in: .rect(cornerRadius: 10))
+    } else {
+      content
+        .background(.regularMaterial, in: .rect(cornerRadius: 10))
+    }
   }
 }
 
